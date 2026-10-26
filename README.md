@@ -15,7 +15,6 @@ El ejecutable no tiene firma digital, así que Windows puede frenarlo:
 
 - **SmartScreen** ("Windows protegió su PC"): pulsa *Más información* y luego *Ejecutar de todas formas*. Para evitarlo, antes de descomprimir el zip haz clic derecho sobre él, *Propiedades* y marca *Desbloquear*. `build.bat` también quita esta marca a todo lo que compila.
 - **Control inteligente de aplicaciones** (Smart App Control, Windows 11): bloquea cualquier programa sin firma y no tiene botón para continuar. Se puede desactivar en *Seguridad de Windows > Control de aplicaciones y del explorador > Configuración de Control inteligente de aplicaciones*. Desde la actualización de abril de 2026 (KB5083769) se puede volver a activar después sin reinstalar Windows.
-- La solución definitiva es firmar el ejecutable. Para proyectos de código abierto, [SignPath Foundation](https://signpath.org/) ofrece firma gratuita.
 
 Para desarrollo, usa `run-dev.bat` o abre `src\DynamicIsland.csproj` en Visual Studio 2022.
 
