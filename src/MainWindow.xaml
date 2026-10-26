@@ -1,0 +1,30 @@
+<!--
+  Copyright (c) 2026 Andrey Mantilla Leon
+  Licensed under the MIT License. See LICENSE in the project root.
+-->
+<Window x:Class="DynamicIsland.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dynamic Island"
+        Width="720" Height="320"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        AllowDrop="True"
+        TextOptions.TextFormattingMode="Display">
+    <!-- Las zonas transparentes dejan pasar los clics a lo que hay debajo. -->
+    <Canvas x:Name="Root">
+        <Path x:Name="Blob" Fill="#FF000000" />
+        <Canvas x:Name="ContentHost">
+            <ContentPresenter x:Name="MainPresenter" RenderTransformOrigin="0.5,0.3" />
+        </Canvas>
+        <Canvas x:Name="BubbleHost" Background="#01000000">
+            <ContentPresenter x:Name="BubblePresenter" />
+        </Canvas>
+    </Canvas>
+</Window>
