@@ -13,7 +13,7 @@ public sealed class Settings
 {
     // General
     public bool StartWithWindows { get; set; }
-    public bool RunAsAdmin { get; set; }
+    public bool RunAsAdmin { get; set; } = true;
     public double IslandScale { get; set; } = 1.0;
     public int HoverDelayMs { get; set; } = 120;
     public bool HotkeysEnabled { get; set; } = true;
@@ -21,6 +21,8 @@ public sealed class Settings
     // Pantalla completa / juegos
     public bool ShowInFullscreen { get; set; } = true;
     public bool GameHud { get; set; } = true;
+    /// <summary>Datos del modo juego en la isla: fps, low, ft, cpu, cput, gpu, gput, vram, ram, time.</summary>
+    public System.Collections.Generic.List<string> HudItems { get; set; } = new() { "fps", "cpu", "gpu" };
 
     // Música
     public bool MusicVisualizer { get; set; } = true;
@@ -48,6 +50,10 @@ public sealed class Settings
     // Inicio
     public bool WeatherEnabled { get; set; } = true;
     public bool UseWindowsLocation { get; set; } = true;
+    /// <summary>Ciudad elegida a mano (vacía = automática).</summary>
+    public string WeatherCity { get; set; } = "";
+    public double WeatherLat { get; set; }
+    public double WeatherLon { get; set; }
 
     // Música: letras
     public bool LyricsEnabled { get; set; } = true;
@@ -82,7 +88,12 @@ public sealed class Settings
         try
         {
             if (File.Exists(FilePath))
-                return JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
+            {
+                var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
+                if (s.HudItems == null || s.HudItems.Count == 0) s.HudItems = new() { "fps", "cpu", "gpu" };
+                s.WeatherCity ??= "";
+                return s;
+            }
         }
         catch (Exception ex) { Log.Error("Settings load", ex); }
         return new Settings();

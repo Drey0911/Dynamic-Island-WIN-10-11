@@ -21,13 +21,24 @@ public sealed class GameModule : IslandModule
     public override string Name => "Rendimiento";
     public override string Glyph => UI.GGame;
     public override int Priority => 65;
-    public override Size CompactSize => new(300, 28);
+    public override Size CompactSize => new(_width, 28);
+
+    /// <summary>Datos que se pueden mostrar en la isla, en el orden en que aparecen.</summary>
+    public static readonly (string Key, string Label)[] Items =
+    {
+        ("fps", "FPS"), ("low", "1% low"), ("ft", "Frametime"), ("cpu", "CPU"), ("cput", "Temp. CPU"),
+        ("gpu", "GPU"), ("gput", "Temp. GPU"), ("vram", "VRAM"), ("ram", "RAM"), ("time", "Hora"),
+    };
+    public const int MaxItems = 6;
 
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly Grid _compact;
-    readonly TextBlock _fps, _cpu, _gpu;
+    readonly StackPanel _row;
+    readonly System.Collections.Generic.List<(string Key, TextBlock Value)> _values = new();
     readonly PerfCards _cards = new();
     bool _fullscreen, _acquired;
+    double _width = 300;
+    string _layout = "";
 
     public override FrameworkElement CompactView => _compact;
     public override FrameworkElement ExpandedView => _cards.View;
@@ -35,25 +46,68 @@ public sealed class GameModule : IslandModule
     public GameModule()
     {
         _compact = new Grid { Margin = new Thickness(14, 0, 14, 0) };
-        var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-        _fps = Stat(row, "FPS");
-        _cpu = Stat(row, "CPU");
-        _gpu = Stat(row, "GPU");
-        _compact.Children.Add(row);
+        _row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+        _compact.Children.Add(_row);
+        BuildRow();
         _tick.Tick += (_, _) => Refresh();
     }
 
-    static TextBlock Stat(StackPanel host, string label)
+    /// <summary>Arma la fila con los datos elegidos en Ajustes.</summary>
+    void BuildRow()
     {
-        var l = UI.Label(label, 11, UI.Dim, FontWeights.SemiBold);
-        l.Margin = new Thickness(host.Children.Count == 0 ? 0 : 14, 0, 5, 0);
-        host.Children.Add(l);
-        var v = UI.Label("--", 12, UI.Accent, FontWeights.SemiBold);
-        host.Children.Add(v);
-        return v;
+        var chosen = Settings.Current.HudItems ?? new System.Collections.Generic.List<string>();
+        string layout = string.Join(",", chosen);
+        if (layout == _layout && _row.Children.Count > 0) return;
+        _layout = layout;
+        _row.Children.Clear();
+        _values.Clear();
+        foreach (var (key, label) in Items)
+        {
+            if (!chosen.Contains(key)) continue;
+            // La temperatura va pegada a la carga si ambas están elegidas: "CPU 45% 70°".
+            string shortLabel = key switch
+            {
+                "cput" => chosen.Contains("cpu") ? "" : "CPU",
+                "gput" => chosen.Contains("gpu") ? "" : "GPU",
+                "ft" => "FT",
+                "time" => "",
+                _ => label,
+            };
+            if (shortLabel.Length > 0)
+            {
+                var l = UI.Label(shortLabel, 11, UI.Dim, FontWeights.SemiBold);
+                l.Margin = new Thickness(_row.Children.Count == 0 ? 0 : 14, 0, 5, 0);
+                _row.Children.Add(l);
+            }
+            var v = UI.Label("--", 12, UI.Accent, FontWeights.SemiBold);
+            if (shortLabel.Length == 0)
+                v.Margin = new Thickness(_row.Children.Count == 0 ? 0 : key is "cput" or "gput" ? 7 : 14, 0, 0, 0);
+            _row.Children.Add(v);
+            _values.Add((key, v));
+        }
+        if (_values.Count == 0)
+        {
+            var v = UI.Label("--", 12, UI.Accent, FontWeights.SemiBold);
+            _row.Children.Add(UI.Label("FPS ", 11, UI.Dim, FontWeights.SemiBold));
+            _row.Children.Add(v);
+            _values.Add(("fps", v));
+        }
+        Measure(force: true);
     }
 
-    public override void Start() => Settings.Changed += Update;
+    /// <summary>Ajusta el ancho de la isla al contenido, en pasos para que no tiemble.</summary>
+    void Measure(bool force)
+    {
+        _row.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double target = Math.Max(140, Math.Ceiling((_row.DesiredSize.Width + 40) / 20) * 20);
+        if (force || Math.Abs(target - _width) >= 20)
+        {
+            _width = target;
+            if (IsActive) Raise();
+        }
+    }
+
+    public override void Start() => Settings.Changed += () => { BuildRow(); Update(); };
 
     public override void Stop()
     {
@@ -109,11 +163,28 @@ public sealed class GameModule : IslandModule
     void Refresh()
     {
         var s = HardwareMonitor.Instance.Latest;
-        _fps.Text = s.Fps.HasValue ? $"{s.Fps:0}" : "--";
-        _cpu.Text = $"{s.CpuLoad * 100:0}%" + (s.CpuTemp.HasValue ? $"  {s.CpuTemp:0}°" : "");
-        _gpu.Text = s.GpuLoad.HasValue ? $"{s.GpuLoad * 100:0}%" + (s.GpuTemp.HasValue ? $"  {s.GpuTemp:0}°" : "") : "--";
-        _cpu.Foreground = PerfCards.TempBrush(s.CpuTemp);
-        _gpu.Foreground = PerfCards.TempBrush(s.GpuTemp);
+        foreach (var (key, v) in _values)
+        {
+            Brush color = UI.Accent;
+            v.Text = key switch
+            {
+                "fps" => s.Fps.HasValue ? $"{s.Fps:0}" : "--",
+                "low" => s.FpsLow1.HasValue ? $"{s.FpsLow1:0}" : "--",
+                "ft" => s.FrameTimeMs.HasValue ? $"{s.FrameTimeMs:0.0} ms" : "--",
+                "cpu" => $"{s.CpuLoad * 100:0}%",
+                "cput" => s.CpuTemp.HasValue ? $"{s.CpuTemp:0}°" : "--",
+                "gpu" => s.GpuLoad.HasValue ? $"{s.GpuLoad * 100:0}%" : "--",
+                "gput" => s.GpuTemp.HasValue ? $"{s.GpuTemp:0}°" : "--",
+                "vram" => s.GpuMemUsed.HasValue ? $"{s.GpuMemUsed / 1024:0.0} GB" : "--",
+                "ram" => $"{s.RamLoad * 100:0}%",
+                "time" => DateTime.Now.ToString("t", System.Globalization.CultureInfo.CurrentCulture),
+                _ => "--",
+            };
+            if (key == "cput") color = PerfCards.TempBrush(s.CpuTemp);
+            if (key == "gput") color = PerfCards.TempBrush(s.GpuTemp);
+            v.Foreground = color;
+        }
+        Measure(force: false);
         if (_cards.View.IsVisible) _cards.Update(s);
     }
 }

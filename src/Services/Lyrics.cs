@@ -26,7 +26,7 @@ public static class LyricsService
     static HttpClient CreateClient()
     {
         var c = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.5 (Windows)");
+        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.6 (Windows)");
         return c;
     }
 

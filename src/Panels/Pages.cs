@@ -33,6 +33,7 @@ public sealed class HomePage
     readonly WeatherIcon _wIcon = new(30);
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
     DateTime _weatherAt = DateTime.MinValue;
+    int _weatherVersion = -1;
     bool _weatherLoading;
 
     public HomePage()
@@ -112,13 +113,14 @@ public sealed class HomePage
         string net = NetworkInfo.ActiveName();
         _net.Text = net.Length > 0 ? net : "Sin conexión";
 
-        if (!Settings.Current.WeatherEnabled) _weather.Visibility = Visibility.Collapsed;
-        else if ((DateTime.Now - _weatherAt).TotalMinutes >= 15 && !_weatherLoading) _ = LoadWeatherAsync();
+        if (!Settings.Current.WeatherEnabled) { _weather.Visibility = Visibility.Collapsed; _weatherAt = DateTime.MinValue; } // al reactivarlo recarga de inmediato
+        else if (((DateTime.Now - _weatherAt).TotalMinutes >= 15 || _weatherVersion != WeatherService.Version) && !_weatherLoading) _ = LoadWeatherAsync();
     }
 
     async System.Threading.Tasks.Task LoadWeatherAsync()
     {
         _weatherLoading = true;
+        _weatherVersion = WeatherService.Version;
         try
         {
             var w = await WeatherService.GetAsync();
@@ -727,8 +729,10 @@ public sealed class SystemPage
     readonly Grid _root;
     readonly PerfCards _cards = new();
     readonly StoragePanel _storage = new();
+    readonly DevicesPanel _devices = new();
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
-    bool _acquired, _showStorage;
+    bool _acquired;
+    int _view;
 
     public SystemPage()
     {
@@ -736,18 +740,19 @@ public sealed class SystemPage
         _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _root.RowDefinitions.Add(new RowDefinition());
 
-        var switcher = UI.Segmented(new[] { (false, "Rendimiento"), (true, "Almacenamiento") }, false, storage =>
+        var switcher = UI.Segmented(new[] { (0, "Rendimiento"), (1, "Almacenamiento"), (2, "Dispositivos") }, 0, v =>
         {
-            _showStorage = storage;
+            _view = v;
             Apply();
         });
         switcher.Margin = new Thickness(18, 0, 18, 2);
         _root.Children.Add(switcher);
 
-        Grid.SetRow(_cards.View, 1);
-        _root.Children.Add(_cards.View);
-        Grid.SetRow(_storage.View, 1);
-        _root.Children.Add(_storage.View);
+        foreach (var v in new[] { _cards.View, _storage.View, _devices.View })
+        {
+            Grid.SetRow(v, 1);
+            _root.Children.Add(v);
+        }
 
         _tick.Tick += (_, _) => _cards.Update(HardwareMonitor.Instance.Latest);
         _root.IsVisibleChanged += (_, _) => Apply();
@@ -757,10 +762,11 @@ public sealed class SystemPage
     void Apply()
     {
         bool visible = _root.IsVisible;
-        _cards.View.Visibility = _showStorage ? Visibility.Collapsed : Visibility.Visible;
-        _storage.View.Visibility = _showStorage ? Visibility.Visible : Visibility.Collapsed;
+        _cards.View.Visibility = _view == 0 ? Visibility.Visible : Visibility.Collapsed;
+        _storage.View.Visibility = _view == 1 ? Visibility.Visible : Visibility.Collapsed;
+        _devices.View.Visibility = _view == 2 ? Visibility.Visible : Visibility.Collapsed;
 
-        bool perf = visible && !_showStorage;
+        bool perf = visible && _view == 0;
         if (perf)
         {
             if (!_acquired) { HardwareMonitor.Instance.Acquire(); _acquired = true; }
@@ -772,7 +778,146 @@ public sealed class SystemPage
             _tick.Stop();
             if (_acquired) { HardwareMonitor.Instance.Release(); _acquired = false; }
         }
-        if (visible && _showStorage) _storage.Refresh();
+        if (visible && _view == 1) _storage.Refresh();
+        _devices.SetVisible(visible && _view == 2);
+    }
+}
+
+/// <summary>
+/// Dispositivos inalámbricos conectados (Bluetooth o receptor USB) con la batería que informa cada uno.
+/// </summary>
+public sealed class DevicesPanel
+{
+    public FrameworkElement View => _scroll;
+    readonly ScrollViewer _scroll;
+    readonly StackPanel _list = new() { Margin = new Thickness(18, 4, 18, 8) };
+    readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromSeconds(30) };
+    TextBlock _status = UI.Label("", 11, UI.Dim);
+    bool _scanning;
+
+    public DevicesPanel()
+    {
+        _scroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _list };
+        _timer.Tick += async (_, _) => await ScanAsync();
+    }
+
+    public void SetVisible(bool visible)
+    {
+        if (!visible) { _timer.Stop(); return; }
+        Render(DeviceBatteries.Last);
+        _timer.Start();
+        if ((DateTime.Now - DeviceBatteries.LastScan).TotalSeconds > 5) _ = ScanAsync();
+    }
+
+    async System.Threading.Tasks.Task ScanAsync()
+    {
+        if (_scanning) return;
+        _scanning = true;
+        _status.Text = "Buscando dispositivos...";
+        List<DeviceBattery> found;
+        try { found = await DeviceBatteries.ScanAsync(); }
+        catch (Exception ex) { Log.Error("Devices panel", ex); found = DeviceBatteries.Last; }
+        _scanning = false;
+        Render(found);
+    }
+
+    void Render(List<DeviceBattery> devices)
+    {
+        _list.Children.Clear();
+
+        var head = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        _status = UI.Label("", 11, UI.Dim);
+        _status.Margin = new Thickness(0, 0, 118, 0);
+        _status.Text = _scanning ? "Buscando dispositivos..." :
+            devices.Count == 0 ? "No hay dispositivos inalámbricos conectados" :
+            $"{devices.Count} conectado{(devices.Count == 1 ? "" : "s")} · se actualiza cada 30 s";
+        _status.VerticalAlignment = VerticalAlignment.Center;
+        head.Children.Add(_status);
+        var refresh = UI.IconTextButton(UI.GReset, "Actualizar", () => _ = ScanAsync(), 110, 28);
+        refresh.HorizontalAlignment = HorizontalAlignment.Right;
+        head.Children.Add(refresh);
+        _list.Children.Add(head);
+
+        foreach (var d in devices) _list.Children.Add(Row(d));
+
+        if (!_scanning && !DeviceBatteries.HeadsetControlAvailable)
+        {
+            var note = UI.Label("Para audífonos inalámbricos USB falta headsetcontrol.exe junto a la app: ejecuta build.bat de nuevo.", 11, UI.Dim);
+            note.TextWrapping = TextWrapping.Wrap;
+            note.TextTrimming = TextTrimming.None;
+            note.Margin = new Thickness(0, 4, 0, 0);
+            _list.Children.Add(note);
+        }
+    }
+
+    static string KindGlyph(string kind) => kind switch
+    {
+        "Audífonos" => "\uE7F6",
+        "Mouse" => "\uE962",
+        "Teclado" => UI.GKeyboard,
+        "Control" => UI.GGame,
+        "Teléfono" => UI.GPhone,
+        _ => "\uE702",
+    };
+
+    static string LinkText(DeviceLink link) => link switch
+    {
+        DeviceLink.Bluetooth => "Bluetooth",
+        DeviceLink.BluetoothLE => "Bluetooth LE",
+        DeviceLink.UsbReceiver => "Receptor USB",
+        _ => "USB",
+    };
+
+    static FrameworkElement Row(DeviceBattery d)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(34) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        var icon = UI.Icon(KindGlyph(d.Kind), 18, UI.Accent);
+        icon.HorizontalAlignment = HorizontalAlignment.Left;
+        icon.VerticalAlignment = VerticalAlignment.Top;
+        icon.Margin = new Thickness(0, 2, 0, 0);
+        grid.Children.Add(icon);
+
+        var info = new StackPanel();
+        var top = new Grid();
+        top.ColumnDefinitions.Add(new ColumnDefinition());
+        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var name = UI.Label(d.Name, 13, UI.White, FontWeights.SemiBold);
+        top.Children.Add(name);
+
+        string value = d.LevelText != null && (d.Approx || d.Percent == null) ? d.LevelText
+            : d.Percent is int p ? (d.Approx ? $"~{p} %" : $"{p} %")
+            : "Sin dato";
+        var right = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0) };
+        if (d.Charging)
+        {
+            var bolt = UI.Icon("\uE945", 11, UI.Green);
+            bolt.Margin = new Thickness(0, 0, 4, 0);
+            bolt.VerticalAlignment = VerticalAlignment.Center;
+            right.Children.Add(bolt);
+        }
+        var color = d.Percent is int lv ? (lv <= 15 ? UI.Red : lv <= 30 ? UI.Orange : UI.White) : UI.Dim;
+        right.Children.Add(UI.Label(value, 13, color, FontWeights.SemiBold));
+        Grid.SetColumn(right, 1);
+        top.Children.Add(right);
+        info.Children.Add(top);
+
+        if (d.Percent is int pct)
+        {
+            var bar = new ThinBar(6, pct <= 15 ? UI.Red : pct <= 30 ? UI.Orange : UI.Accent, UI.Faint) { Margin = new Thickness(0, 4, 0, 3) };
+            bar.SetValue01(pct / 100.0, animate: false);
+            info.Children.Add(bar);
+        }
+        string detail = LinkText(d.Link) + " · " + d.Kind + (d.Charging ? " · Cargando" : "");
+        var sub = UI.Label(detail, 11, UI.Dim);
+        sub.Margin = new Thickness(0, d.Percent == null ? 2 : 0, 0, 0);
+        info.Children.Add(sub);
+        Grid.SetColumn(info, 1);
+        grid.Children.Add(info);
+        grid.ToolTip = d.Source;
+        grid.Background = Brushes.Transparent;
+        return grid;
     }
 }
 

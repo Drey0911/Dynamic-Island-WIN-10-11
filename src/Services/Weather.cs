@@ -3,6 +3,7 @@
 
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -15,8 +16,8 @@ public sealed record WeatherNow(double Temp, double Feels, int Code, bool IsDay,
     int Humidity, double Wind, string Place, string Unit, string WindUnit);
 
 /// <summary>
-/// Clima con Open-Meteo (gratis, sin clave). La ubicación sale de Windows
-/// (Configuración > Privacidad > Ubicación) o, si no está permitida, aproximada por IP.
+/// Clima con Open-Meteo (gratis, sin clave). La ubicación sale, en este orden, de la ciudad
+/// elegida en Ajustes, de Windows (Configuración > Privacidad > Ubicación) o aproximada por IP.
 /// </summary>
 public static class WeatherService
 {
@@ -27,8 +28,35 @@ public static class WeatherService
     static HttpClient CreateClient()
     {
         var c = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
-        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.5");
+        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.6");
         return c;
+    }
+
+    /// <summary>Cambia cuando el usuario elige otra ciudad; la pestaña Inicio recarga el clima.</summary>
+    public static int Version { get; private set; }
+
+    public static void ResetLocation()
+    {
+        _location = null;
+        Version++;
+    }
+
+    /// <summary>Busca una ciudad por nombre (geocodificación de Open-Meteo).</summary>
+    /// <returns>Nombre para mostrar y coordenadas, o null si no se encontró.</returns>
+    public static async Task<(string Name, double Lat, double Lon)?> FindCityAsync(string query)
+    {
+        query = query.Trim();
+        if (query.Length < 2) return null;
+        string lang = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+        string url = $"https://geocoding-api.open-meteo.com/v1/search?name={Uri.EscapeDataString(query)}&count=1&language={lang}&format=json";
+        using var doc = JsonDocument.Parse(await Http.GetStringAsync(url));
+        if (!doc.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0) return null;
+        var r = results[0];
+        string name = r.GetProperty("name").GetString() ?? query;
+        string region = r.TryGetProperty("admin1", out var a) ? a.GetString() ?? "" : "";
+        string country = r.TryGetProperty("country", out var c) ? c.GetString() ?? "" : "";
+        string full = string.Join(", ", new[] { name, region, country }.Where(x => x.Length > 0).Distinct());
+        return (full, r.GetProperty("latitude").GetDouble(), r.GetProperty("longitude").GetDouble());
     }
 
     static string Inv(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
@@ -64,6 +92,10 @@ public static class WeatherService
     static async Task<(double, double, string)?> LocateAsync()
     {
         if (_location != null && (DateTime.Now - _locatedAt).TotalMinutes < 60) return _location;
+
+        var s = Settings.Current;
+        if (s.WeatherCity.Length > 0 && (s.WeatherLat != 0 || s.WeatherLon != 0))
+            return Remember(s.WeatherLat, s.WeatherLon, s.WeatherCity.Split(',')[0]);
 
         if (Settings.Current.UseWindowsLocation)
         {

@@ -416,8 +416,8 @@ public sealed class SettingsPage
 
         Section("General");
         Toggle("Iniciar con Windows", "Abre la isla al encender el PC", () => S.StartWithWindows, v => { S.StartWithWindows = v; App.ApplyStartup(); });
-        Toggle("Ejecutar como administrador", "Para la temperatura del CPU y para FPS si no diste el permiso de abajo",
-            () => S.RunAsAdmin, v => { S.RunAsAdmin = v; App.ApplyStartup(); });
+        Toggle("Ejecutar como administrador", "Activa la temperatura del CPU, los FPS de cualquier juego y el arrastre de archivos desde apps de administrador",
+            () => S.RunAsAdmin, v => { S.RunAsAdmin = v; App.ApplyStartup(); }, badge: "Recomendado");
         if (!Native.IsElevated())
             ActionCard(UI.GShield, "Reiniciar como administrador", "Aplica el modo administrador sin cerrar la app.",
                 () => null, "Reiniciar", App.RestartElevated);
@@ -441,12 +441,15 @@ public sealed class SettingsPage
 
         Section("Pantalla completa y juegos");
         Toggle("Mostrar la isla en pantalla completa", "Sobre juegos en modo ventana sin bordes, videos y presentaciones", () => S.ShowInFullscreen, v => S.ShowInFullscreen = v);
-        Toggle("Rendimiento en juegos", "FPS, CPU y GPU en la isla mientras juegas", () => S.GameHud, v => S.GameHud = v);
+        Toggle("Rendimiento en juegos", "Datos de rendimiento en la isla mientras juegas", () => S.GameHud, v => S.GameHud = v);
+        MultiChoice("Qué mostrar en la isla", $"Elige de 1 a {Modules.GameModule.MaxItems}. El detalle completo aparece al abrir la isla.",
+            Modules.GameModule.Items, S.HudItems, Modules.GameModule.MaxItems);
 
         Section("Inicio");
         Toggle("Clima", "Temperatura y pronóstico del día con Open-Meteo", () => S.WeatherEnabled, v => S.WeatherEnabled = v);
         Toggle("Usar la ubicación de Windows", "Si está desactivada o no hay permiso, se usa una ubicación aproximada por internet",
-            () => S.UseWindowsLocation, v => S.UseWindowsLocation = v);
+            () => S.UseWindowsLocation, v => { S.UseWindowsLocation = v; Services.WeatherService.ResetLocation(); });
+        CityPicker();
 
         Section("Música");
         Toggle("Efectos dinámicos", "La isla reacciona al ritmo de lo que suena", () => S.MusicVisualizer, v => S.MusicVisualizer = v);
@@ -492,7 +495,7 @@ public sealed class SettingsPage
         _stack.Children.Add(keyRow);
 
         Section("Acerca de");
-        _stack.Children.Add(UI.Label($"Dynamic Island {AppVersion()} · © 2026 Andrey Mantilla Leon · Licencia MIT", 11, UI.Dim));
+        _stack.Children.Add(UI.Label($"Dynamic Island {AppVersion()} · Licencia MIT · 2026", 11, UI.Dim));
         var open = UI.IconTextButton(UI.GOpenFolder, "Abrir carpeta de ajustes", () =>
         {
             try { Process.Start(new ProcessStartInfo(Log.Folder) { UseShellExecute = true }); } catch { }
@@ -648,13 +651,27 @@ public sealed class SettingsPage
         _stack.Children.Add(t);
     }
 
-    void Toggle(string title, string? description, Func<bool> get, Action<bool> set)
+    void Toggle(string title, string? description, Func<bool> get, Action<bool> set, string? badge = null)
     {
         var row = new Grid { Margin = new Thickness(0, 0, 0, 8) };
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        texts.Children.Add(UI.Label(title, 13, UI.White, FontWeights.SemiBold));
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
+        titleRow.Children.Add(UI.Label(title, 13, UI.White, FontWeights.SemiBold));
+        if (badge != null)
+        {
+            titleRow.Children.Add(new Border
+            {
+                Background = UI.AccentSoft,
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(7, 1, 7, 2),
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = UI.Label(badge, 10, UI.Accent, FontWeights.SemiBold),
+            });
+        }
+        texts.Children.Add(titleRow);
         if (description != null)
         {
             var d = UI.Label(description, 11, UI.Dim);
@@ -679,6 +696,127 @@ public sealed class SettingsPage
         var seg = UI.Segmented(options, current, v => { set(v); S.Save(); });
         seg.Margin = new Thickness(0, 0, 0, 4);
         _stack.Children.Add(seg);
+    }
+
+    /// <summary>Selección múltiple con fichas (por ejemplo, los datos del modo juego).</summary>
+    void MultiChoice(string title, string hint, (string Key, string Label)[] options, List<string> selected, int max)
+    {
+        var t = UI.Label(title, 13, UI.White, FontWeights.SemiBold);
+        _stack.Children.Add(t);
+        var h = UI.Label(hint, 11, UI.Dim);
+        h.TextWrapping = TextWrapping.Wrap;
+        h.TextTrimming = TextTrimming.None;
+        h.Margin = new Thickness(0, 1, 0, 6);
+        _stack.Children.Add(h);
+
+        var panel = new WrapPanel { Margin = new Thickness(0, 0, 0, 6) };
+        var chips = new List<(Border Border, TextBlock Text, string Key)>();
+        void Paint()
+        {
+            foreach (var (border, text, key) in chips)
+            {
+                bool on = selected.Contains(key);
+                border.Background = on ? UI.AccentSoft : UI.ButtonBg;
+                text.Foreground = on ? UI.Accent : UI.White;
+            }
+        }
+        foreach (var (key, label) in options)
+        {
+            var text = UI.Label(label, 12, UI.White, FontWeights.SemiBold);
+            var border = new Border
+            {
+                Height = 28,
+                Padding = new Thickness(12, 0, 12, 0),
+                Margin = new Thickness(0, 0, 6, 6),
+                CornerRadius = new CornerRadius(14),
+                Child = text,
+                Cursor = Cursors.Hand,
+            };
+            border.MouseLeftButtonDown += (_, e) => e.Handled = true;
+            border.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                if (selected.Contains(key))
+                {
+                    if (selected.Count <= 1) return; // siempre queda al menos uno
+                    selected.Remove(key);
+                }
+                else
+                {
+                    if (selected.Count >= max) return;
+                    selected.Add(key);
+                }
+                Paint();
+                S.Save();
+            };
+            chips.Add((border, text, key));
+            panel.Children.Add(border);
+        }
+        Paint();
+        _stack.Children.Add(panel);
+    }
+
+    /// <summary>Ciudad del clima elegida a mano, por si la ubicación automática no es la correcta.</summary>
+    void CityPicker()
+    {
+        var t = UI.Label("Ciudad del clima", 13, UI.White, FontWeights.SemiBold);
+        _stack.Children.Add(t);
+        var status = UI.Label(S.WeatherCity.Length > 0 ? $"Usando: {S.WeatherCity}" : "Automática (Windows o internet)", 11, UI.Dim);
+        status.TextWrapping = TextWrapping.Wrap;
+        status.TextTrimming = TextTrimming.None;
+        status.Margin = new Thickness(0, 1, 0, 6);
+        _stack.Children.Add(status);
+
+        var row = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var input = UI.Input(32);
+        input.Text = S.WeatherCity.Split(',')[0];
+        row.Children.Add(input);
+
+        async void Search()
+        {
+            string q = input.Text.Trim();
+            if (q.Length < 2) return;
+            status.Text = "Buscando...";
+            try
+            {
+                var found = await Services.WeatherService.FindCityAsync(q);
+                if (found == null) { status.Text = "No se encontró esa ciudad. Prueba con \"Ciudad, País\"."; return; }
+                S.WeatherCity = found.Value.Name;
+                S.WeatherLat = found.Value.Lat;
+                S.WeatherLon = found.Value.Lon;
+                S.Save();
+                Services.WeatherService.ResetLocation();
+                status.Text = $"Usando: {S.WeatherCity}";
+            }
+            catch (Exception ex)
+            {
+                Log.Error("City search", ex);
+                status.Text = "Sin conexión. Inténtalo de nuevo.";
+            }
+        }
+        input.KeyDown += (_, e) => { if (e.Key == Key.Enter) { e.Handled = true; Search(); } };
+
+        var find = UI.Button(UI.CenterLabel("Buscar", 12, UI.Black, FontWeights.SemiBold), Search, 80, 32, 16, UI.Accent);
+        find.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(find, 1);
+        row.Children.Add(find);
+        var auto = UI.Button(UI.CenterLabel("Automática", 12, UI.White, FontWeights.SemiBold), () =>
+        {
+            S.WeatherCity = "";
+            S.WeatherLat = 0;
+            S.WeatherLon = 0;
+            S.Save();
+            Services.WeatherService.ResetLocation();
+            input.Text = "";
+            status.Text = "Automática (Windows o internet)";
+        }, 96, 32, 16);
+        auto.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(auto, 2);
+        row.Children.Add(auto);
+        _stack.Children.Add(row);
     }
 
     void AddAction(string text, string glyph, Action onClick)
