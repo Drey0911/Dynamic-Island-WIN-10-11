@@ -21,6 +21,7 @@ El ejecutable no tiene firma digital, así que Windows puede frenarlo:
 - **Control inteligente de aplicaciones** (Smart App Control, Windows 11): bloquea cualquier programa sin firma y no tiene botón para continuar. Se puede desactivar en *Seguridad de Windows > Control de aplicaciones y del explorador > Configuración de Control inteligente de aplicaciones*. Desde la actualización de abril de 2026 (KB5083769) se puede volver a activar después sin reinstalar Windows.
 
 Para desarrollo, usa `run-dev.bat` o abre `src\DynamicIsland.csproj` en tu IDE de preferencia.
+por el momento se encuentra en BETA la funcion de *modo DEV* para llamado *GET de APIs* para agregarlas como dashboard (graficas) y consulta, al dynamic island.
 
 ## Funciones
 

@@ -85,6 +85,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+#if TESTBACKDROP
+        // Solo en compilaciones de prueba: fondo de color para ver la isla en capturas sin transparencia.
+        Background = new SolidColorBrush(Color.FromRgb(0x5d, 0x86, 0xa8));
+#endif
         _springs = new[] { _w, _h, _r, _offsetX, _bubbleR, _bubbleDx, _visible };
         MainPresenter.RenderTransform = _contentScale;
         Root.RenderTransform = _islandScale;
@@ -99,6 +103,7 @@ public partial class MainWindow : Window
             new VolumeModule(), new MicrophoneModule(), new BrightnessModule(), new CapsLockModule(),
             new PowerModule(), new NetworkModule(), new PrivacyModule(), new DownloadsModule(),
             new ScreenshotModule(_clipboard), new SmartClipboardModule(_clipboard), new BluetoothModule(),
+            new ApiModule(),
         });
         _dashboard = new Dashboard(timer, stopwatch, alarm, focus, _shelf, _clipboard);
 
@@ -289,6 +294,8 @@ public partial class MainWindow : Window
     {
         if (!_expanded) { _openWatch.Stop(); return; }
         if (IsCursorOverIsland()) { _outsideSince = null; return; }
+        // Un arrastre siempre lleva el botón presionado: si ya se soltó, el estado de arrastre quedó viejo.
+        if (_dragging && !Native.IsMouseButtonDown() && !_shellDrag) _dragging = false;
         if (_dragging || IslandHost.DraggingOut) return;
 
         if (Native.IsMouseButtonDown())
@@ -364,17 +371,17 @@ public partial class MainWindow : Window
         // Tras cerrar el panel hay que salir de la zona antes de que vuelva a abrirse.
         if (!_hotArmed) return;
 
-        int needed = Math.Max(1, (int)Math.Ceiling(Settings.Current.HoverDelayMs / 90.0));
+        // Con el botón presionado (un clic en pestañas o barras de título arriba de la pantalla) no se abre;
+        // solo si se mantiene un momento, que es lo que pasa al arrastrar un archivo hasta aquí.
+        bool down = Native.IsMouseButtonDown();
+        int needed = down
+            ? (int)Math.Ceiling(650 / 90.0)
+            : Math.Max(1, (int)Math.Ceiling(Settings.Current.HoverDelayMs / 90.0));
         if (++_hotTicks < needed) return;
         _hotTicks = 0;
         _hotArmed = false;
         _pinned = false;
-        if (Native.IsMouseButtonDown())
-        {
-            _dragging = true;
-            SetExpanded(true, DashTab.Files);
-        }
-        else SetExpanded(true, DashTab.Now);
+        SetExpanded(true, down ? DashTab.Files : DashTab.Now);
     }
 
     void OnDisplayChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(PositionWindow));
@@ -409,6 +416,7 @@ public partial class MainWindow : Window
             try { m.Stop(); } catch { }
         }
         HardwareMonitor.Instance.Shutdown();
+        ApiHub.Instance.SaveHistory();
         Speech.Stop();
     }
 
@@ -432,6 +440,7 @@ public partial class MainWindow : Window
     {
         if (value)
         {
+            if (!_expanded) _localPress = false; // un clic viejo que terminó en otra ventana no cuenta
             _requestedTab = tab;
             _outsideSince = null;
             _openWatch.Start();

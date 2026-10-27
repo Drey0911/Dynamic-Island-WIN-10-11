@@ -130,7 +130,8 @@ public static class Speech
     {
         get
         {
-            try { return SpeechSynthesizer.AllVoices; }
+            // Se copia la lista dentro del try: algunas instalaciones fallan al recorrerla, no al pedirla.
+            try { return SpeechSynthesizer.AllVoices.ToList(); }
             catch { return Array.Empty<VoiceInformation>(); }
         }
     }

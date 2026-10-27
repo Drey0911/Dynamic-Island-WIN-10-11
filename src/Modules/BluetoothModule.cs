@@ -78,7 +78,7 @@ public sealed class BluetoothModule : TransientModule
     readonly ToastView _toast = new();
     readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(12) };
     HashSet<string> _known = new(StringComparer.OrdinalIgnoreCase);
-    bool _first = true, _busy;
+    bool _first = true, _busy, _logged;
 
     public BluetoothModule() => _poll.Tick += async (_, _) => await CheckAsync();
 
@@ -119,7 +119,11 @@ public sealed class BluetoothModule : TransientModule
             _known = now;
             _first = false;
         }
-        catch (Exception ex) { Log.Error("Bluetooth", ex); }
+        catch (Exception ex)
+        {
+            // Sin Bluetooth en el equipo el error se repetiría cada 12 s: se anota una sola vez.
+            if (!_logged) { _logged = true; Log.Error("Bluetooth", ex); }
+        }
         finally { _busy = false; }
     }
 }

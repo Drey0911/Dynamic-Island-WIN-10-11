@@ -302,7 +302,7 @@ public sealed class AudioPage
             Name.Margin = new Thickness(0, 0, 10, 0);
             Grid.SetColumn(Name, 1);
             Root.Children.Add(Name);
-            Slider.ValueChanged += v => { Value.Text = $"{v * 100:0}"; onChange(v); };
+            Slider.ValueChanged += v => { Value!.Text = $"{v * 100:0}"; onChange(v); };
             Grid.SetColumn(Slider, 2);
             Root.Children.Add(Slider);
             Value = UI.Label("", 12, UI.Dim);
@@ -439,6 +439,8 @@ public sealed class SettingsPage
     public FrameworkElement View => _root;
     readonly Grid _root;
     readonly StackPanel _stack = new();
+    readonly StackPanel _dev = new();
+    string _devSignature = "";
 
     static Settings S => Settings.Current;
 
@@ -567,6 +569,13 @@ public sealed class SettingsPage
             }
             catch (Exception ex) { Log.Error("Speech test", ex); }
         });
+
+        Section("Beta DEV mode");
+        Toggle("Beta DEV mode", "Agrega tus propias APIs gratuitas (precios, clima, lo que quieras) como módulos de la isla, con datos y gráficas. Todo se guarda y se conserva al apagar el PC.",
+            () => S.DevMode, v => { S.DevMode = v; }, badge: "Beta");
+        _stack.Children.Add(_dev);
+        RenderDev();
+        Settings.Changed += () => _root.Dispatcher.BeginInvoke(new Action(RenderDev));
 
         Section("Acerca de");
         _stack.Children.Add(UI.Label($"Dynamic Island {AppVersion()} · Licencia MIT · 2026", 11, UI.Dim));
@@ -713,6 +722,79 @@ public sealed class SettingsPage
             });
         }
         catch (Exception ex) { Log.Error("PawnIO", ex); }
+    }
+
+    /// <summary>Lista de APIs del modo Beta DEV (solo visible con el modo activo).</summary>
+    void RenderDev()
+    {
+        string sig = S.DevMode + "|" + string.Join("|", S.Apis.Select(a => $"{a.Id}:{a.Title}:{a.Enabled}:{a.ShowInIsland}:{a.Url}:{a.RefreshSeconds}")) + "|" + S.ApiRotateSeconds;
+        if (sig == _devSignature) return;
+        _devSignature = sig;
+        _dev.Children.Clear();
+        if (!S.DevMode) return;
+
+        foreach (var api in S.Apis)
+        {
+            var a = api;
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition());
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            char first = a.Title.Trim().FirstOrDefault(char.IsLetterOrDigit);
+            var badge = new Border
+            {
+                Width = 30,
+                Height = 30,
+                CornerRadius = new CornerRadius(9),
+                Background = a.Enabled ? UI.Accent : UI.ButtonBg,
+                Child = UI.CenterLabel(first == default ? "A" : char.ToUpper(first).ToString(), 13, a.Enabled ? UI.Black : UI.Dim, FontWeights.Bold),
+            };
+            grid.Children.Add(badge);
+            var texts = new StackPanel { Margin = new Thickness(12, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
+            texts.Children.Add(UI.Label(a.Title, 13, UI.White, FontWeights.SemiBold));
+            string host = Uri.TryCreate(a.Url, UriKind.Absolute, out var u) ? u.Host : a.Url;
+            string every = a.RefreshSeconds >= 3600 ? $"{a.RefreshSeconds / 3600} h" : a.RefreshSeconds >= 60 ? $"{a.RefreshSeconds / 60} min" : $"{a.RefreshSeconds} s";
+            texts.Children.Add(UI.Label($"{host} · cada {every}{(a.ShowInIsland ? " · en la isla" : "")}", 11, UI.Dim));
+            Grid.SetColumn(texts, 1);
+            grid.Children.Add(texts);
+            var sw = new ToggleSwitch(a.Enabled) { VerticalAlignment = VerticalAlignment.Center, ToolTip = "Activa" };
+            sw.Toggled += v => { a.Enabled = v; S.Save(); };
+            Grid.SetColumn(sw, 2);
+            grid.Children.Add(sw);
+            var edit = UI.Button(UI.Icon("\uE70F", 12, UI.Dim), () => ApiEditorWindow.Open(a), 32, 32, 16, Brushes.Transparent);
+            edit.ToolTip = "Editar";
+            edit.Margin = new Thickness(6, 0, 0, 0);
+            Grid.SetColumn(edit, 3);
+            grid.Children.Add(edit);
+            _dev.Children.Add(new Border
+            {
+                Background = UI.CardBg,
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(12, 8, 8, 8),
+                Margin = new Thickness(0, 0, 0, 8),
+                Child = grid,
+            });
+        }
+
+        if (S.Apis.Count == 0)
+        {
+            var empty = UI.Label("Aún no hay APIs. Agrega una con el botón +.", 12, UI.Dim);
+            empty.Margin = new Thickness(0, 0, 0, 8);
+            _dev.Children.Add(empty);
+        }
+
+        var add = UI.IconTextButton(UI.GAdd, "Agregar API", () => ApiEditorWindow.Open(null), 150, 32, UI.Accent, UI.Black);
+        add.HorizontalAlignment = HorizontalAlignment.Left;
+        add.Margin = new Thickness(0, 0, 0, 10);
+        _dev.Children.Add(add);
+
+        var t = UI.Label("Turno de cada API en la isla", 13, UI.White, FontWeights.SemiBold);
+        t.Margin = new Thickness(0, 0, 0, 6);
+        _dev.Children.Add(t);
+        var seg = UI.Segmented(new[] { (5, "5 s"), (8, "8 s"), (15, "15 s"), (30, "30 s") }, S.ApiRotateSeconds, v => { S.ApiRotateSeconds = v; S.Save(); });
+        seg.Margin = new Thickness(0, 0, 0, 4);
+        _dev.Children.Add(seg);
     }
 
     /// <summary>Idiomas con voz instalada, por ejemplo "Español: Sabina, Raúl · Inglés: Zira".</summary>

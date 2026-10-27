@@ -13,7 +13,7 @@
     <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
     <AssemblyName>DynamicIsland</AssemblyName>
     <RootNamespace>DynamicIsland</RootNamespace>
-    <Version>0.7.0</Version>
+    <Version>0.8.1</Version>
     <Product>Dynamic Island for Windows</Product>
     <Authors>Andrey Mantilla Leon</Authors>
     <Copyright>Copyright (c) 2026 Andrey Mantilla Leon</Copyright>

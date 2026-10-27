@@ -15,7 +15,7 @@ using DynamicIsland.Services;
 
 namespace DynamicIsland.Panels;
 
-public enum DashTab { Home, Now, Time, Translate, Audio, Files, Clipboard, System, Settings }
+public enum DashTab { Home, Now, Time, Translate, Audio, Files, Clipboard, System, Apis, Settings }
 
 /// <summary>Panel expandido: barra de pestañas y página activa.</summary>
 public sealed class Dashboard
@@ -46,6 +46,7 @@ public sealed class Dashboard
         _pages[DashTab.Files] = new FilesPage(shelf).View;
         _pages[DashTab.Clipboard] = new ClipboardPage(clipboard).View;
         _pages[DashTab.System] = new SystemPage().View;
+        _pages[DashTab.Apis] = new ApisPage().View;
         _pages[DashTab.Settings] = new SettingsPage().View;
 
         _root = new Grid();
@@ -76,6 +77,7 @@ public sealed class Dashboard
         AddTab(tabs, DashTab.Files, UI.GFolder, "Archivos");
         AddTab(tabs, DashTab.Clipboard, UI.GClipboard, "Portapapeles");
         AddTab(tabs, DashTab.System, UI.GChart, "Sistema");
+        AddTab(tabs, DashTab.Apis, "\uE943", "APIs");
         AddTab(tabs, DashTab.Settings, UI.GSettings, "Ajustes");
         Grid.SetColumn(tabs, 1);
         bar.Children.Add(tabs);
@@ -92,6 +94,16 @@ public sealed class Dashboard
         _clock.Text = DateTime.Now.ToString("t");
         SetNow(null);
         Select(DashTab.Home, animate: false);
+        ApplyDevMode();
+        Settings.Changed += ApplyDevMode;
+    }
+
+    /// <summary>La pestaña APIs solo existe con el modo Beta DEV activo.</summary>
+    void ApplyDevMode()
+    {
+        bool dev = Settings.Current.DevMode;
+        _tabs[DashTab.Apis].tab.Visibility = dev ? Visibility.Visible : Visibility.Collapsed;
+        if (!dev && _selected == DashTab.Apis) Select(DashTab.Settings, animate: false);
     }
 
     void AddTab(StackPanel host, DashTab id, string glyph, string label)
@@ -150,6 +162,7 @@ public sealed class Dashboard
     public void Select(DashTab tab, bool animate = true)
     {
         if (tab == DashTab.Now && _now == null) tab = DashTab.Home;
+        if (tab == DashTab.Apis && !Settings.Current.DevMode) tab = DashTab.Home;
         _selected = tab;
         foreach (var (id, t) in _tabs)
         {

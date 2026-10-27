@@ -76,6 +76,12 @@ public sealed class Settings
     // Bluetooth
     public bool BluetoothBattery { get; set; } = true;
 
+    // Modo Beta DEV: APIs propias como módulos de la isla
+    public bool DevMode { get; set; }
+    public System.Collections.Generic.List<DynamicIsland.Services.ApiWidget> Apis { get; set; } = new();
+    /// <summary>Segundos que se muestra cada API en la isla cuando hay varias.</summary>
+    public int ApiRotateSeconds { get; set; } = 8;
+
     // Alarma
     public int AlarmHour { get; set; } = 7;
     public int AlarmMinute { get; set; }
@@ -89,17 +95,27 @@ public sealed class Settings
 
     static Settings Load()
     {
-        try
+        // Si el archivo quedó dañado (por ejemplo, un apagón al guardar), se usa la copia anterior.
+        foreach (var path in new[] { FilePath, FilePath + ".bak" })
         {
-            if (File.Exists(FilePath))
+            try
             {
-                var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
+                if (!File.Exists(path)) continue;
+                var s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(path));
+                if (s == null) continue;
                 if (s.HudItems == null || s.HudItems.Count == 0) s.HudItems = new() { "fps", "cpu", "gpu" };
+                s.Apis ??= new();
+                s.Apis.RemoveAll(a => a == null);
+                foreach (var api in s.Apis)
+                {
+                    api.Fields ??= new();
+                    api.Chart ??= new();
+                }
                 s.WeatherCity ??= "";
                 return s;
             }
+            catch (Exception ex) { Log.Error("Settings load " + Path.GetFileName(path), ex); }
         }
-        catch (Exception ex) { Log.Error("Settings load", ex); }
         return new Settings();
     }
 
@@ -107,8 +123,7 @@ public sealed class Settings
     {
         try
         {
-            Directory.CreateDirectory(Log.Folder);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            DynamicIsland.Services.SafeFile.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (Exception ex) { Log.Error("Settings save", ex); }
         Changed?.Invoke();
