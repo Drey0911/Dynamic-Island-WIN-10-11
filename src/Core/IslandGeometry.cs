@@ -33,6 +33,23 @@ public static class IslandGeometry
         sb.Append("Z ");
     }
 
+    /// <summary>Rectángulo redondeado flotante (estilo iPhone), en sentido horario.</summary>
+    public static void AppendRoundedRect(StringBuilder sb, double left, double top, double right, double bottom, double r)
+    {
+        double w = right - left, h = bottom - top;
+        if (w < 1 || h < 0.5) return;
+        r = Math.Clamp(r, 0, Math.Min(h, w) / 2);
+        sb.Append($"M {F(left + r)},{F(top)} L {F(right - r)},{F(top)} ");
+        Corner(sb, r, right, top + r);
+        sb.Append($"L {F(right)},{F(bottom - r)} ");
+        Corner(sb, r, right - r, bottom);
+        sb.Append($"L {F(left + r)},{F(bottom)} ");
+        Corner(sb, r, left, bottom - r);
+        sb.Append($"L {F(left)},{F(top + r)} ");
+        Corner(sb, r, left + r, top);
+        sb.Append("Z ");
+    }
+
     static void Corner(StringBuilder sb, double r, double x, double y)
     {
         if (r < 0.1) sb.Append($"L {F(x)},{F(y)} ");

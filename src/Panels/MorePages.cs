@@ -48,6 +48,12 @@ public sealed class TranslatePage
         langs.Children.Add(LangButton(out _toLabel, () => OpenPicker(false)));
         _status = UI.Label("", 11, UI.Dim);
         _status.Margin = new Thickness(12, 0, 0, 0);
+        _status.MouseLeftButtonUp += (_, e) =>
+        {
+            if (!_voiceMissing) return;
+            e.Handled = true;
+            Speech.OpenVoiceSettings();
+        };
         langs.Children.Add(_status);
         _root.Children.Add(langs);
 
@@ -175,7 +181,7 @@ public sealed class TranslatePage
     void PasteAndTranslate()
     {
         var text = ClipboardHistory.CurrentText();
-        if (string.IsNullOrWhiteSpace(text)) { _status.Text = "El portapapeles no tiene texto"; return; }
+        if (string.IsNullOrWhiteSpace(text)) { Status("El portapapeles no tiene texto"); return; }
         _input.Text = text;
         _ = TranslateAsync();
     }
@@ -200,34 +206,52 @@ public sealed class TranslatePage
         string text = _input.Text;
         if (string.IsNullOrWhiteSpace(text)) return;
         int id = ++_request;
-        _status.Text = "Traduciendo...";
+        Status("Traduciendo...");
         try
         {
             string result = await Translator.TranslateAsync(text, S.TranslateFrom, S.TranslateTo);
             if (id != _request) return;
             _output.Text = result;
-            _status.Text = S.TranslatorService == "DeepL" && S.DeepLKey.Length > 0 ? "DeepL" : "MyMemory";
+            Status(S.TranslatorService == "DeepL" && S.DeepLKey.Length > 0 ? "DeepL" : "MyMemory");
         }
         catch (Exception ex)
         {
             if (id != _request) return;
-            _status.Text = "No se pudo traducir";
+            Status("No se pudo traducir");
             Log.Error("Translate", ex);
         }
+    }
+
+    bool _voiceMissing;
+
+    void Status(string text)
+    {
+        _voiceMissing = false;
+        _status.Text = text;
+        _status.Foreground = UI.Dim;
+        _status.Cursor = null;
+        _status.ToolTip = null;
     }
 
     async Task SpeakAsync()
     {
         string text = _output.Text.Length > 0 ? _output.Text : _input.Text;
-        string lang = _output.Text.Length > 0 ? S.TranslateTo : (S.TranslateFrom == "auto" ? "es" : S.TranslateFrom);
+        string lang = _output.Text.Length > 0 ? S.TranslateTo
+            : S.TranslateFrom != "auto" ? S.TranslateFrom
+            : SmartText.DetectLanguage(text) ?? "es";
         try
         {
-            if (!await Speech.SpeakAsync(text, lang))
-                _status.Text = "Instala la voz del idioma en Configuración > Hora e idioma > Voz";
+            if (await Speech.SpeakAsync(text, lang)) return;
+            // Falta la voz: el aviso se puede tocar para abrir la descarga de voces de Windows.
+            _status.Text = $"Falta la voz en {Speech.LanguageName(lang)} · Agregar";
+            _status.ToolTip = "Abre Configuración de Windows > Voz para descargarla";
+            _status.Foreground = UI.Accent;
+            _status.Cursor = Cursors.Hand;
+            _voiceMissing = true;
         }
         catch (Exception ex)
         {
-            _status.Text = "No se pudo reproducir la voz";
+            Status("No se pudo reproducir la voz");
             Log.Error("Speech", ex);
         }
     }
@@ -236,7 +260,7 @@ public sealed class TranslatePage
     {
         if (_output.Text.Length == 0) return;
         ClipboardHistory.CopySilently(_output.Text);
-        _status.Text = "Copiado";
+        Status("Copiado");
     }
 }
 
@@ -430,6 +454,13 @@ public sealed class SettingsPage
         if (!Native.IsElevated())
             ActionCard(UI.GShield, "Reiniciar como administrador", "Aplica el modo administrador sin cerrar la app.",
                 () => null, "Reiniciar", App.RestartElevated);
+        Choice("Forma de la isla", new[] { ("attached", "Pegada al borde"), ("floating", "Flotante"), ("discrete", "Discreta") },
+            S.IslandStyle, v => S.IslandStyle = v);
+        var styleHint = UI.Label("Flotante: separada del borde, como en el iPhone. Discreta: no se ve hasta que hay música, una llamada u otra actividad; para abrirla lleva el cursor al centro del borde superior de la pantalla.", 11, UI.Dim);
+        styleHint.TextWrapping = TextWrapping.Wrap;
+        styleHint.TextTrimming = TextTrimming.None;
+        styleHint.Margin = new Thickness(0, 0, 0, 10);
+        _stack.Children.Add(styleHint);
         Choice("Tamaño de la isla", new[] { (0.9, "Pequeña"), (1.0, "Normal"), (1.15, "Grande") }, S.IslandScale, v => S.IslandScale = v);
         Choice("Abrir al pasar el mouse", new[] { (60, "Rápido"), (120, "Normal"), (350, "Lento") }, S.HoverDelayMs, v => S.HoverDelayMs = v);
         Toggle("Atajos de teclado", "Ctrl+Shift+Espacio panel · Ctrl+Shift+Y traducir · Ctrl+Shift+F9 micrófono · Ctrl+Shift+F10/F11/F12 anterior, pausa, siguiente",
@@ -507,6 +538,35 @@ public sealed class SettingsPage
         hint.Margin = new Thickness(0, 0, 0, 4);
         _stack.Children.Add(hint);
         _stack.Children.Add(keyRow);
+
+        Section("Voz del traductor");
+        ActionCard(UI.GSpeaker, "Voces instaladas", InstalledVoices(),
+            () => null, "Agregar", Speech.OpenVoiceSettings);
+        var voiceHint = UI.Label("\"Agregar\" abre Configuración de Windows > Hora e idioma > Voz > Agregar voces. Elige el idioma (por ejemplo Inglés) y, al terminar la descarga, reinicia la isla.", 11, UI.Dim);
+        voiceHint.TextWrapping = TextWrapping.Wrap;
+        voiceHint.TextTrimming = TextTrimming.None;
+        voiceHint.Margin = new Thickness(0, -4, 0, 10);
+        _stack.Children.Add(voiceHint);
+        Choice("Velocidad de lectura", new[] { (0.8, "Lenta"), (1.0, "Normal"), (1.25, "Rápida") }, S.SpeechRate, v => S.SpeechRate = v);
+        AddAction("Probar la voz del idioma de destino", UI.GSpeaker, async () =>
+        {
+            string lang = S.TranslateTo;
+            string sample = lang switch
+            {
+                "es" => "Hola, así suena la voz del traductor.",
+                "en" => "Hello, this is how the translator voice sounds.",
+                "pt" => "Olá, esta é a voz do tradutor.",
+                "fr" => "Bonjour, voici la voix du traducteur.",
+                "de" => "Hallo, so klingt die Stimme des Übersetzers.",
+                "it" => "Ciao, questa è la voce del traduttore.",
+                _ => "Hello",
+            };
+            try
+            {
+                if (!await Speech.SpeakAsync(sample, lang)) Speech.OpenVoiceSettings();
+            }
+            catch (Exception ex) { Log.Error("Speech test", ex); }
+        });
 
         Section("Acerca de");
         _stack.Children.Add(UI.Label($"Dynamic Island {AppVersion()} · Licencia MIT · 2026", 11, UI.Dim));
@@ -653,6 +713,16 @@ public sealed class SettingsPage
             });
         }
         catch (Exception ex) { Log.Error("PawnIO", ex); }
+    }
+
+    /// <summary>Idiomas con voz instalada, por ejemplo "Español: Sabina, Raúl · Inglés: Zira".</summary>
+    static string InstalledVoices()
+    {
+        var groups = Speech.Voices
+            .GroupBy(v => v.Language.Split('-')[0].ToLowerInvariant())
+            .Select(g => $"{Speech.LanguageName(g.Key)}: {string.Join(", ", g.Select(v => v.DisplayName.Replace("Microsoft ", "").Split(' ')[0]).Distinct())}")
+            .ToList();
+        return groups.Count == 0 ? "No hay voces instaladas en Windows." : string.Join(" · ", groups);
     }
 
     static string AppVersion() =>

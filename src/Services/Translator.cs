@@ -125,15 +125,53 @@ public static class Speech
 {
     static SoundPlayer? _player;
 
+    /// <summary>Voces instaladas en Windows (Configuración > Hora e idioma > Voz).</summary>
+    public static IReadOnlyList<VoiceInformation> Voices
+    {
+        get
+        {
+            try { return SpeechSynthesizer.AllVoices; }
+            catch { return Array.Empty<VoiceInformation>(); }
+        }
+    }
+
+    /// <summary>Voz para un idioma ("en", "es"...). Prefiere la de la región del PC (por ejemplo es-CO o es-MX).</summary>
+    public static VoiceInformation? VoiceFor(string language)
+    {
+        var matches = Voices.Where(v => v.Language.StartsWith(language, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (matches.Count == 0) return null;
+        string region = System.Globalization.RegionInfo.CurrentRegion.TwoLetterISORegionName;
+        string regional = $"{language}-{region}";
+        return matches.FirstOrDefault(v => v.Language.Equals(regional, StringComparison.OrdinalIgnoreCase))
+               ?? matches.FirstOrDefault(v => v.Gender == VoiceGender.Female)
+               ?? matches[0];
+    }
+
+    /// <summary>Nombre del idioma en español: "en" -> "Inglés".</summary>
+    public static string LanguageName(string code)
+    {
+        var known = Translator.Languages.FirstOrDefault(l => l.Code.Equals(code, StringComparison.OrdinalIgnoreCase));
+        if (known.Name != null) return known.Name;
+        try { return new System.Globalization.CultureInfo(code).NativeName; }
+        catch { return code; }
+    }
+
+    /// <summary>Abre la página de voces de Windows para descargar más idiomas.</summary>
+    public static void OpenVoiceSettings()
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:speech") { UseShellExecute = true }); }
+        catch (Exception ex) { Log.Error("Speech settings", ex); }
+    }
+
     /// <returns>false si no hay voz instalada para ese idioma.</returns>
     public static async Task<bool> SpeakAsync(string text, string language)
     {
         if (string.IsNullOrWhiteSpace(text)) return true;
-        var voice = SpeechSynthesizer.AllVoices.FirstOrDefault(v =>
-            v.Language.StartsWith(language, StringComparison.OrdinalIgnoreCase));
+        var voice = VoiceFor(language);
         if (voice == null) return false;
 
         using var synth = new SpeechSynthesizer { Voice = voice };
+        synth.Options.SpeakingRate = Math.Clamp(Settings.Current.SpeechRate, 0.5, 2.0);
         using var stream = await synth.SynthesizeTextToStreamAsync(text);
         var ms = new MemoryStream();
         using (var input = stream.AsStreamForRead()) await input.CopyToAsync(ms);

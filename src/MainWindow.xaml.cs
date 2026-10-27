@@ -28,6 +28,8 @@ public partial class MainWindow : Window
     const double IdleWidth = 104, IdleHeight = 20;
     const double BubbleGap = 8;
     const double ExpandedRadius = 24;
+    const double FloatGap = 8;
+    const double HotZoneWidth = 280, HotZoneHeight = 6;
 
     enum Hotkey { Panel = 1, Translate, Mic, Previous, PlayPause, Next }
 
@@ -72,6 +74,14 @@ public partial class MainWindow : Window
 
     bool Hidden => _userHidden || (_fullscreen && !Settings.Current.ShowInFullscreen);
 
+    static bool Floating => Settings.Current.IslandStyle == "floating";
+    static bool Discrete => Settings.Current.IslandStyle == "discrete";
+
+    // Modo discreto: sin actividad la isla no se ve; se abre al llevar el cursor al centro del borde superior.
+    readonly DispatcherTimer _hotZone = new() { Interval = TimeSpan.FromMilliseconds(90) };
+    bool _idleHidden, _hotArmed = true;
+    int _hotTicks;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -113,6 +123,7 @@ public partial class MainWindow : Window
             SetExpanded(true, DashTab.Now);
         };
         _openWatch.Tick += (_, _) => WatchOpenPanel();
+        _hotZone.Tick += (_, _) => WatchHotZone();
 
         Root.DragEnter += (_, e) =>
         {
@@ -203,6 +214,8 @@ public partial class MainWindow : Window
         _islandScale.CenterX = Width / 2;
         _islandScale.CenterY = 0;
         _hoverTimer.Interval = TimeSpan.FromMilliseconds(Math.Clamp(s.HoverDelayMs, 0, 1000));
+        _hotZone.Stop();
+        _hotTicks = 0;
         if (_hwnd != IntPtr.Zero) RegisterHotkeys(s.HotkeysEnabled);
         Evaluate();
     }
@@ -329,6 +342,41 @@ public partial class MainWindow : Window
         catch { return Root.IsMouseOver; }
     }
 
+    /// <summary>
+    /// Modo discreto con la isla oculta: si el cursor se queda en el centro del borde superior, se abre el panel.
+    /// Si llega arrastrando un archivo, se abre directo en Archivos.
+    /// </summary>
+    void WatchHotZone()
+    {
+        if (!_idleHidden || _expanded || Hidden || _fullscreen) { _hotZone.Stop(); _hotTicks = 0; return; }
+        bool inside = false;
+        try
+        {
+            if (Native.GetCursorPos(out var c))
+            {
+                var p = PointFromScreen(new Point(c.X, c.Y));
+                double scale = Math.Max(0.5, Settings.Current.IslandScale);
+                inside = p.Y <= HotZoneHeight && Math.Abs(p.X - Width / 2) <= HotZoneWidth * scale / 2;
+            }
+        }
+        catch { }
+        if (!inside) { _hotTicks = 0; _hotArmed = true; return; }
+        // Tras cerrar el panel hay que salir de la zona antes de que vuelva a abrirse.
+        if (!_hotArmed) return;
+
+        int needed = Math.Max(1, (int)Math.Ceiling(Settings.Current.HoverDelayMs / 90.0));
+        if (++_hotTicks < needed) return;
+        _hotTicks = 0;
+        _hotArmed = false;
+        _pinned = false;
+        if (Native.IsMouseButtonDown())
+        {
+            _dragging = true;
+            SetExpanded(true, DashTab.Files);
+        }
+        else SetExpanded(true, DashTab.Now);
+    }
+
     void OnDisplayChanged(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(PositionWindow));
 
     void PositionWindow()
@@ -434,13 +482,15 @@ public partial class MainWindow : Window
         {
             _primary = active.FirstOrDefault();
             if (_primary != null) { view = _primary.CompactView; size = _primary.CompactSize; }
-            else { view = null; size = new Size(IdleWidth, IdleHeight); }
+            else { view = null; size = Floating ? new Size(96, 26) : new Size(IdleWidth, IdleHeight); }
 
             if (_primary != null && !_primary.IsTransient)
                 secondary = active.FirstOrDefault(m => m != _primary && !m.IsTransient && m.BubbleView != null);
         }
 
-        _visible.Target = Hidden ? 0 : 1;
+        _idleHidden = Discrete && !_expanded && _primary == null;
+        if (_idleHidden && !Hidden) _hotZone.Start();
+        _visible.Target = Hidden || _idleHidden ? 0 : 1;
         _w.Target = size.Width;
         _h.Target = size.Height;
         _r.Target = _expanded ? ExpandedRadius : size.Height / 2;
@@ -572,14 +622,17 @@ public partial class MainWindow : Window
         double r = Math.Min(Math.Max(0, _r.Value), Math.Min(dw, dh) / 2);
         double fillet = Math.Clamp(dh * 0.28, 0, 12);
         double left = cx - dw / 2, right = cx + dw / 2;
+        bool floating = Floating;
+        double top = floating ? FloatGap * vis : 0;
 
         var sb = new StringBuilder("F1 ");
-        IslandGeometry.AppendNotch(sb, left, right, dh, r, fillet);
+        if (floating) IslandGeometry.AppendRoundedRect(sb, left, top, right, top + dh, r);
+        else IslandGeometry.AppendNotch(sb, left, right, dh, r, fillet);
 
         double br = Math.Max(0, _bubbleR.Value) * vis;
         double capR = dh / 2;
-        var capCenter = new Vec2(right - capR, dh / 2);
-        var bubbleCenter = new Vec2(right + _bubbleDx.Value, dh / 2);
+        var capCenter = new Vec2(right - capR, top + dh / 2);
+        var bubbleCenter = new Vec2(right + _bubbleDx.Value, top + dh / 2);
         if (br > 0.5)
         {
             IslandGeometry.AppendCircle(sb, bubbleCenter.X, bubbleCenter.Y, br);
@@ -589,11 +642,12 @@ public partial class MainWindow : Window
         Blob.Data = dh > 0.5 ? Geometry.Parse(sb.ToString()) : Geometry.Empty;
 
         Canvas.SetLeft(ContentHost, left);
-        Canvas.SetTop(ContentHost, 0);
+        Canvas.SetTop(ContentHost, top);
         ContentHost.Width = dw;
         ContentHost.Height = dh;
         var clip = new StringBuilder("F1 ");
-        IslandGeometry.AppendNotch(clip, 0, dw, dh, r, 0);
+        if (floating) IslandGeometry.AppendRoundedRect(clip, 0, 0, dw, dh, r);
+        else IslandGeometry.AppendNotch(clip, 0, dw, dh, r, 0);
         ContentHost.Clip = dh > 0.5 ? Geometry.Parse(clip.ToString()) : Geometry.Empty;
         Canvas.SetLeft(MainPresenter, (dw - _currentSize.Width) / 2);
         Canvas.SetTop(MainPresenter, dh - _currentSize.Height);

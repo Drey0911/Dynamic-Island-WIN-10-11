@@ -15,6 +15,8 @@ public sealed class Settings
     public bool StartWithWindows { get; set; }
     public bool RunAsAdmin { get; set; } = true;
     public double IslandScale { get; set; } = 1.0;
+    /// <summary>Forma: "attached" (pegada al borde), "floating" (flotante) o "discrete" (oculta sin actividad).</summary>
+    public string IslandStyle { get; set; } = "attached";
     public int HoverDelayMs { get; set; } = 120;
     public bool HotkeysEnabled { get; set; } = true;
 
@@ -47,6 +49,7 @@ public sealed class Settings
     public string TranslateTo { get; set; } = "en";
     public string TranslatorService { get; set; } = "MyMemory";
     public string DeepLKey { get; set; } = "";
+    public double SpeechRate { get; set; } = 1.0;
 
     // Inicio
     public bool WeatherEnabled { get; set; } = true;
