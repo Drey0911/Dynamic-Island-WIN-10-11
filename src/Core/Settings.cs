@@ -37,6 +37,7 @@ public sealed class Settings
     public bool NotifyDownloads { get; set; } = true;
     public bool ShowPrivacy { get; set; } = true;
     public bool ShowCalls { get; set; } = true;
+    public bool CallsInBrowser { get; set; } = true;
 
     // Privacidad
     public bool ClipboardHistory { get; set; } = true;

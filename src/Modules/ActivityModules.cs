@@ -91,7 +91,10 @@ public sealed class PrivacyModule : IslandModule
         {
             // Si hay una llamada en curso, esa app la muestra el módulo de llamadas.
             string? call = CallModule.ActiveKey;
-            mic = CapabilityUsage.InUse("microphone").Where(x => x.Key != call).Select(x => x.Name).Distinct().ToList();
+            var app = CallModule.ActiveApp;
+            mic = CapabilityUsage.InUse("microphone")
+                .Where(x => x.Key != call && (app == null || !x.Key.Contains(app.Key, StringComparison.OrdinalIgnoreCase)))
+                .Select(x => x.Name).Distinct().ToList();
             cam = CapabilityUsage.InUse("webcam").Select(x => x.Name).Distinct().ToList();
         }
         string sig = string.Join("|", mic) + "#" + string.Join("|", cam);

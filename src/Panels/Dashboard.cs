@@ -72,7 +72,7 @@ public sealed class Dashboard
         AddTab(tabs, DashTab.Now, UI.GMusic, "Ahora");
         AddTab(tabs, DashTab.Time, UI.GTimer, "Tiempo");
         AddTab(tabs, DashTab.Translate, UI.GGlobe, "Traducir");
-        AddTab(tabs, DashTab.Audio, UI.GVolume, "Audio");
+        AddTab(tabs, DashTab.Audio, "\uE9E9", "Controles");
         AddTab(tabs, DashTab.Files, UI.GFolder, "Archivos");
         AddTab(tabs, DashTab.Clipboard, UI.GClipboard, "Portapapeles");
         AddTab(tabs, DashTab.System, UI.GChart, "Sistema");

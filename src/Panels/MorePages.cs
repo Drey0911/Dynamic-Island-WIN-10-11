@@ -241,7 +241,7 @@ public sealed class TranslatePage
 }
 
 // ---------------------------------------------------------------------
-// Audio: salida, micrófono, brillo y volumen por aplicación
+// Controles: sonido (salida, micrófono y apps), pantalla (brillo) y Bluetooth
 // ---------------------------------------------------------------------
 public sealed class AudioPage
 {
@@ -250,6 +250,7 @@ public sealed class AudioPage
     readonly StackPanel _apps = new();
     readonly StackPanel _bt = new();
     readonly StackPanel _btCaption;
+    readonly StackPanel _screenCaption;
     readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
     readonly DispatcherTimer _brightnessDebounce = new() { Interval = TimeSpan.FromMilliseconds(150) };
     readonly Row _output, _input, _brightness;
@@ -309,10 +310,17 @@ public sealed class AudioPage
         _input = new Row(UI.GMic, "Micrófono", AudioControl.SetInputVolume, () => { AudioControl.ToggleMicMute(); Refresh(); });
         _brightness = new Row(UI.GBrightness, "Brillo", v => { _pendingBrightness = (int)Math.Round(v * 100); _brightnessDebounce.Stop(); _brightnessDebounce.Start(); }, null);
         _brightness.Root.Visibility = Visibility.Collapsed;
+        var sound = UI.Caption(UI.GVolume, "Sonido");
+        sound.Margin = new Thickness(0, 0, 0, 8);
+        stack.Children.Add(sound);
         stack.Children.Add(_output.Root);
         stack.Children.Add(_input.Root);
+        _screenCaption = UI.Caption(UI.GBrightness, "Pantalla");
+        _screenCaption.Margin = new Thickness(0, 4, 0, 8);
+        _screenCaption.Visibility = Visibility.Collapsed;
+        stack.Children.Add(_screenCaption);
         stack.Children.Add(_brightness.Root);
-        var caption = UI.Caption(UI.GVolume, "Aplicaciones");
+        var caption = UI.Caption(UI.GMusic, "Volumen por aplicación");
         caption.Margin = new Thickness(0, 4, 0, 8);
         stack.Children.Add(caption);
         stack.Children.Add(_apps);
@@ -350,6 +358,7 @@ public sealed class AudioPage
             {
                 int? b = t.Result;
                 _brightness.Root.Visibility = b == null ? Visibility.Collapsed : Visibility.Visible;
+                _screenCaption.Visibility = _brightness.Root.Visibility;
                 if (b != null) _brightness.Set("Brillo", b.Value / 100.0, false);
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
@@ -465,6 +474,12 @@ public sealed class SettingsPage
         Choice("Descanso", new[] { (5, "5 min"), (10, "10 min"), (15, "15 min") }, S.BreakMinutes, v => S.BreakMinutes = v);
         Toggle("Activar No molestar al concentrarte", "Silencia las notificaciones de Windows durante el enfoque", () => S.FocusDoNotDisturb, v => S.FocusDoNotDisturb = v);
 
+        Section("Llamadas");
+        Toggle("Mostrar llamadas en la isla", "Discord (chats de voz), Teams, Zoom, WhatsApp, Telegram y cualquier app en llamada, con silenciar, ensordecer e ir a la app",
+            () => S.ShowCalls, v => S.ShowCalls = v);
+        Toggle("Llamadas en el navegador", "Google Meet, Teams o Discord web y otras páginas que usen el micrófono",
+            () => S.CallsInBrowser, v => S.CallsInBrowser = v);
+
         Section("Bluetooth");
         Toggle("Batería de dispositivos", "Avisa al conectar audífonos, mouse o teclados y muestra su batería", () => S.BluetoothBattery, v => S.BluetoothBattery = v);
 
@@ -476,7 +491,6 @@ public sealed class SettingsPage
         Toggle("Conexión a internet", null, () => S.NotifyNetwork, v => S.NotifyNetwork = v);
         Toggle("Cargador", null, () => S.NotifyPower, v => S.NotifyPower = v);
         Toggle("Descargas", null, () => S.NotifyDownloads, v => S.NotifyDownloads = v);
-        Toggle("Llamadas activas", "Teams, Zoom, Discord, Meet y otras", () => S.ShowCalls, v => S.ShowCalls = v);
         Toggle("Uso de micrófono y cámara", null, () => S.ShowPrivacy, v => S.ShowPrivacy = v);
 
         Section("Privacidad");

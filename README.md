@@ -6,7 +6,7 @@
 
 Una isla dinámica para Windows 10 y 11, inspirada en la del iPhone pero pensada para PC. Vive pegada al borde superior de la pantalla, se transforma con animaciones de resorte y muestra lo que está pasando en el equipo: música, llamadas, rendimiento, temporizadores y más.
 
-Versión 0.6 · C# · WPF · .NET 8
+Versión 0.7 · C# · WPF · .NET 8
 
 ## Compilar
 
@@ -33,8 +33,8 @@ Para desarrollo, usa `run-dev.bat` o abre `src\DynamicIsland.csproj` en Visual S
 | Dispositivos | Audífonos, mouse, teclados y controles conectados por Bluetooth o por receptor USB, con la batería que informa cada dispositivo. Ver la sección Batería de dispositivos. |
 | Tiempo | Temporizador, cronómetro, alarma y modo concentración (Pomodoro que activa No molestar). |
 | Traductor | Traducción rápida con lectura en voz alta (voces de Windows). MyMemory gratis o DeepL con clave propia. |
-| Llamadas | Detecta llamadas en Teams, Zoom, Discord, Meet y otras. Silenciar micrófono, ir a la llamada y colgar (Teams y Zoom). |
-| Audio | Volumen por aplicación, salida, micrófono y brillo (portátiles). Avisos al cambiar de dispositivo o silenciar el micrófono. |
+| Llamadas | Detecta cuándo estás en una llamada o chat de voz: Discord, Teams, Zoom, WhatsApp, Telegram, Slack, Signal, TeamSpeak, Steam, Meet en el navegador y cualquier otra app que use el micrófono mientras reproduce audio. Se muestra como la música, con el icono real de la app y puntos que se mueven cuando alguien habla. Al abrir la isla: silenciar el micrófono, ensordecer (silencia el audio de la llamada) e ir a la app. Se activa o desactiva en Ajustes > Llamadas. |
+| Controles | Sonido (salida, micrófono y volumen por aplicación), pantalla (brillo en portátiles) y Bluetooth. Avisos al cambiar de dispositivo o silenciar el micrófono. |
 | Archivos | Suelta uno o varios archivos en la isla. Se guardan con su nombre e icono (también al reiniciar), se arrastran o copian a otra app y se envían al celular con un código QR por la red Wi-Fi local. |
 | Portapapeles | Historial de textos copiados (solo en memoria) e inteligente: colores, operaciones, enlaces y textos en otro idioma. |
 | Capturas | Al copiar una imagen (Win+Shift+S): extraer el texto (OCR de Windows, sin internet), traducirlo o guardar la captura. |
@@ -122,7 +122,9 @@ El OCR de capturas, el portapapeles inteligente y la detección de idioma funcio
 - Los archivos de la bandeja son accesos a su ubicación original: si se borran o mueven, desaparecen de la lista.
 - "No molestar" se activa con una función interna de Windows sin documentación oficial; si una actualización la cambia, el modo concentración sigue funcionando sin silenciar notificaciones.
 - La batería solo aparece si el dispositivo la informa (ver Batería de dispositivos).
-- Colgar desde la isla usa el atajo de cada app y solo está disponible en Teams y Zoom. Silenciar actúa sobre el micrófono del sistema, por lo que funciona en cualquier app, aunque la app no lo muestre.
+- Las llamadas se detectan por el uso real del micrófono (sesiones de audio de Windows y el registro de privacidad). La llamada desaparece unos segundos después de que la app suelta el micrófono. Si una app cierra el micrófono al silenciarte dentro de ella, la isla deja de mostrar la llamada mientras sigas silenciado.
+- Las llamadas se terminan desde la propia app; la isla no cuelga.
+- Silenciar actúa sobre el micrófono del sistema: funciona en cualquier app y nadie te escucha, aunque la app no muestre el icono de silencio.
 - El brillo solo se controla en pantallas integradas de portátiles.
 - La isla aparece en el monitor principal.
 
