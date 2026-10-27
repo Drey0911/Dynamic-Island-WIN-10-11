@@ -1,7 +1,7 @@
 # Dynamic Island para Windows
 
 <p align="center">
-  <img src="./docs/logo.png" alt="Logo Libre CO" width="400" style="vertical-align:middle;"/>
+  <img src="./docs/logo.png" alt="Logo Libre CO" width="100" style="vertical-align:middle;"/>
 </p>
 
 Una isla dinámica para Windows 10 y 11, inspirada en la del iPhone pero pensada para PC. Vive pegada al borde superior de la pantalla, se transforma con animaciones de resorte y muestra lo que está pasando en el equipo: música, llamadas, rendimiento, temporizadores y más.
