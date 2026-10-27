@@ -20,7 +20,7 @@ El ejecutable no tiene firma digital, así que Windows puede frenarlo:
 - **SmartScreen** ("Windows protegió su PC"): pulsa *Más información* y luego *Ejecutar de todas formas*. Para evitarlo, antes de descomprimir el zip haz clic derecho sobre él, *Propiedades* y marca *Desbloquear*. `build.bat` también quita esta marca a todo lo que compila.
 - **Control inteligente de aplicaciones** (Smart App Control, Windows 11): bloquea cualquier programa sin firma y no tiene botón para continuar. Se puede desactivar en *Seguridad de Windows > Control de aplicaciones y del explorador > Configuración de Control inteligente de aplicaciones*. Desde la actualización de abril de 2026 (KB5083769) se puede volver a activar después sin reinstalar Windows.
 
-Para desarrollo, usa `run-dev.bat` o abre `src\DynamicIsland.csproj` en Visual Studio 2022.
+Para desarrollo, usa `run-dev.bat` o abre `src\DynamicIsland.csproj` en tu IDE de preferencia.
 
 ## Funciones
 
@@ -33,7 +33,7 @@ Para desarrollo, usa `run-dev.bat` o abre `src\DynamicIsland.csproj` en Visual S
 | Dispositivos | Audífonos, mouse, teclados y controles conectados por Bluetooth o por receptor USB, con la batería que informa cada dispositivo. Ver la sección Batería de dispositivos. |
 | Tiempo | Temporizador, cronómetro, alarma y modo concentración (Pomodoro que activa No molestar). |
 | Traductor | Traducción rápida con lectura en voz alta (voces de Windows). MyMemory gratis o DeepL con clave propia. |
-| Llamadas | Detecta cuándo estás en una llamada o chat de voz: Discord, Teams, Zoom, WhatsApp, Telegram, Slack, Signal, TeamSpeak, Steam, Meet en el navegador y cualquier otra app que use el micrófono mientras reproduce audio. Se muestra como la música, con el icono real de la app y puntos que se mueven cuando alguien habla. Al abrir la isla: silenciar el micrófono, ensordecer (silencia el audio de la llamada) e ir a la app. Se activa o desactiva en Ajustes > Llamadas. |
+| Llamadas | Detecta cuándo estás en una llamada o chat de voz: Discord, Teams, Zoom, WhatsApp, Telegram, Slack, Signal, TeamSpeak, Steam, Meet en el navegador y cualquier otra app que use el micrófono mientras reproduce audio. Al abrir la isla: silenciar el micrófono, ensordecer (silencia el audio de la llamada) e ir a la app. Se activa o desactiva en Ajustes > Llamadas. |
 | Controles | Sonido (salida, micrófono y volumen por aplicación), pantalla (brillo en portátiles) y Bluetooth. Avisos al cambiar de dispositivo o silenciar el micrófono. |
 | Archivos | Suelta uno o varios archivos en la isla. Se guardan con su nombre e icono (también al reiniciar), se arrastran o copian a otra app y se envían al celular con un código QR por la red Wi-Fi local. |
 | Portapapeles | Historial de textos copiados (solo en memoria) e inteligente: colores, operaciones, enlaces y textos en otro idioma. |
