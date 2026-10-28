@@ -17,6 +17,10 @@ public sealed class Settings
     public double IslandScale { get; set; } = 1.0;
     /// <summary>Forma: "attached" (pegada al borde), "floating" (flotante) o "discrete" (oculta sin actividad).</summary>
     public string IslandStyle { get; set; } = "attached";
+    /// <summary>"translucent" (negro translúcido) o "solid".</summary>
+    public string IslandBackground { get; set; } = "translucent";
+    /// <summary>Color de acento "#RRGGBB".</summary>
+    public string AccentColor { get; set; } = DynamicIsland.Core.UI.DefaultAccent;
     public int HoverDelayMs { get; set; } = 120;
     public bool HotkeysEnabled { get; set; } = true;
 
@@ -110,8 +114,11 @@ public sealed class Settings
                 {
                     api.Fields ??= new();
                     api.Chart ??= new();
+                    api.Chart.TableColumns ??= new();
                 }
                 s.WeatherCity ??= "";
+                if (s.IslandBackground != "solid") s.IslandBackground = "translucent"; // "blur" de la 0.9 ya no existe
+                s.AccentColor ??= DynamicIsland.Core.UI.DefaultAccent;
                 return s;
             }
             catch (Exception ex) { Log.Error("Settings load " + Path.GetFileName(path), ex); }

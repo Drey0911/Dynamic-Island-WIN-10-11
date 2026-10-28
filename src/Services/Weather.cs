@@ -28,7 +28,7 @@ public static class WeatherService
     static HttpClient CreateClient()
     {
         var c = new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
-        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.8");
+        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.9");
         return c;
     }
 

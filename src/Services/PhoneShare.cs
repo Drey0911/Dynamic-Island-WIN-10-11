@@ -118,7 +118,7 @@ public sealed class PhoneShare
         var sb = new StringBuilder();
         sb.Append("<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
         sb.Append("<title>Dynamic Island</title><style>body{margin:0;font-family:system-ui,sans-serif;background:#0b0d10;color:#fff;padding:24px}");
-        sb.Append("h1{font-size:20px;margin:0 0 18px}a{display:block;background:#4DD9EC;color:#000;text-decoration:none;padding:16px;border-radius:14px;margin:0 0 12px;font-weight:600;word-break:break-all}");
+        sb.Append("h1{font-size:20px;margin:0 0 18px}a{display:block;background:" + DynamicIsland.Core.UI.AccentHex + ";color:#000;text-decoration:none;padding:16px;border-radius:14px;margin:0 0 12px;font-weight:600;word-break:break-all}");
         sb.Append("small{display:block;font-weight:400;opacity:.7;margin-top:4px}</style></head><body><h1>Archivos compartidos</h1>");
         for (int i = 0; i < _files.Length; i++)
         {

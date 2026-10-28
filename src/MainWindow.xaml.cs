@@ -84,6 +84,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        UI.ApplyAccent(Settings.Current.AccentColor); // los pinceles del acento nacen en el hilo de la interfaz
         InitializeComponent();
 #if TESTBACKDROP
         // Solo en compilaciones de prueba: fondo de color para ver la isla en capturas sin transparencia.
@@ -222,7 +223,18 @@ public partial class MainWindow : Window
         _hotZone.Stop();
         _hotTicks = 0;
         if (_hwnd != IntPtr.Zero) RegisterHotkeys(s.HotkeysEnabled);
+        UI.ApplyAccent(s.AccentColor);
+        ApplyBackground();
         Evaluate();
+    }
+
+    /// <summary>Fondo de la isla: negro translúcido (deja ver un poco lo de atrás, solo dentro de la isla) o negro sólido.</summary>
+    void ApplyBackground()
+    {
+        byte alpha = Settings.Current.IslandBackground == "solid" ? (byte)0xFF : (byte)0xD0;
+        var fill = new SolidColorBrush(Color.FromArgb(alpha, 0, 0, 0));
+        fill.Freeze();
+        Blob.Fill = fill;
     }
 
     void RegisterHotkeys(bool on)

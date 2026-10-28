@@ -28,12 +28,14 @@ public sealed class ApiEditorWindow : Window
 
     readonly ApiWidget _api;
     readonly bool _isNew;
-    readonly TextBox _title, _url, _headers, _seriesPath, _labelsPath;
+    readonly TextBox _title, _url, _seriesPath, _labelsPath, _tablePath, _tableColumns, _imagePath, _textPath;
+    readonly List<ApiParam> _params;
+    readonly StackPanel _paramsList = new();
     readonly StackPanel _fieldsList = new(), _leaves = new(), _historyChoices = new() { Orientation = Orientation.Horizontal };
     readonly TextBlock _testStatus, _fieldsEmpty;
     readonly ApiCard _preview = new(withButtons: false);
     readonly ApiState _previewState = new();
-    readonly StackPanel _seriesBox, _historyBox;
+    readonly StackPanel _seriesBox, _historyBox, _tableBox, _imageBox, _textBox;
     readonly Border _previewBox;
     readonly WrapPanel _chartKind = new(), _chartSource = new();
     JsonDocument? _doc;
@@ -45,7 +47,7 @@ public sealed class ApiEditorWindow : Window
     static HttpClient CreateClient()
     {
         var c = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.8 (Windows; modo DEV)");
+        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.9 (Windows; modo DEV)");
         c.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         return c;
     }
@@ -76,9 +78,19 @@ public sealed class ApiEditorWindow : Window
         MinWidth = 820;
         MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        // Sin marco de Windows: WindowChrome quita la línea blanca de arriba que deja el borde redimensionable.
         WindowStyle = WindowStyle.None;
-        ResizeMode = ResizeMode.CanResizeWithGrip;
-        Background = UI.Hex("#FF111317");
+        ResizeMode = ResizeMode.CanResize;
+        System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 0,
+            ResizeBorderThickness = new Thickness(6),
+            GlassFrameThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
+            UseAeroCaptionButtons = false,
+        });
+        SourceInitialized += (_, _) => DarkFrame(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+        Background = UI.Hex("#FF0C0D10");
         Foreground = UI.White;
         Topmost = true;
         ShowInTaskbar = true;
@@ -93,7 +105,7 @@ public sealed class ApiEditorWindow : Window
         Content = root;
 
         // ---- Barra de título (se arrastra la ventana desde aquí) ----
-        var titleBar = new Grid { Background = UI.Hex("#FF16191E") };
+        var titleBar = new Grid { Background = UI.Hex("#FF0C0D10") };
         titleBar.ColumnDefinitions.Add(new ColumnDefinition());
         titleBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var heading = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(18, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -155,11 +167,17 @@ public sealed class ApiEditorWindow : Window
         urlRow.Children.Add(test);
         form.Children.Add(urlRow);
 
-        form.Children.Add(Hint("Encabezados opcionales, uno por línea (por ejemplo  x-api-key: TU_CLAVE). Se guardan cifrados con tu usuario de Windows."));
-        _headers = Input(56, multiline: true);
-        _headers.Text = _api.Headers;
-        _headers.FontFamily = new FontFamily("Consolas, Segoe UI");
-        form.Children.Add(_headers);
+        form.Children.Add(Hint("Claves y tokens (solo si la API los pide). Se guardan cifrados con tu usuario de Windows."));
+        _params = _api.Params;
+        form.Children.Add(_paramsList);
+        var paramButtons = new WrapPanel { Margin = new Thickness(0, 2, 0, 0) };
+        var addParam = UI.IconTextButton(UI.GAdd, "Agregar clave", () => { _params.Add(new ApiParam()); RenderParams(focusLast: true); }, 150, 30, UI.AccentSoft, UI.Accent);
+        addParam.Margin = new Thickness(0, 0, 6, 0);
+        paramButtons.Children.Add(addParam);
+        var addToken = UI.IconTextButton(UI.GKey, "Token (Bearer / JWT)", () => { _params.Add(new ApiParam { Name = "Authorization" }); RenderParams(focusLast: true); }, 190, 30);
+        addToken.ToolTip = "Encabezado Authorization: pega solo el token y se envía como \"Bearer token\"";
+        paramButtons.Children.Add(addToken);
+        form.Children.Add(paramButtons);
 
         form.Children.Add(Hint("Actualizar cada"));
         form.Children.Add(Spaced(UI.Segmented(new[] { (30, "30 s"), (60, "1 min"), (300, "5 min"), (900, "15 min"), (3600, "1 h") },
@@ -181,7 +199,8 @@ public sealed class ApiEditorWindow : Window
         form.Children.Add(addField);
 
         // Gráfica
-        form.Children.Add(Section("Gráfica"));
+        form.Children.Add(Section("Vista principal"));
+        form.Children.Add(Hint("Cómo se muestra la respuesta debajo de los datos: gráfica, tabla, imagen o texto."));
         form.Children.Add(Spaced(_chartKind));
         _chartSource.Margin = new Thickness(0, 2, 0, 4);
         form.Children.Add(_chartSource);
@@ -200,9 +219,31 @@ public sealed class ApiEditorWindow : Window
         _seriesBox.Children.Add(_labelsPath);
         form.Children.Add(_seriesBox);
         _historyBox = new StackPanel();
-        _historyBox.Children.Add(Hint("Se guarda un punto en cada actualización (hasta 120) y se conserva al apagar el PC. Dato a graficar:"));
+        _historyBox.Children.Add(Hint("Se guarda un punto en cada actualización (hasta 120). Dato a graficar:"));
         _historyBox.Children.Add(_historyChoices);
         form.Children.Add(_historyBox);
+
+        _tableBox = new StackPanel();
+        _tableBox.Children.Add(Hint("Lista que se muestra como tabla (por ejemplo  data.items  o  results)"));
+        _tablePath = PathInput(_api.Chart.TablePath, v => _api.Chart.TablePath = v);
+        _tableBox.Children.Add(_tablePath);
+        _tableBox.Children.Add(Hint("Columnas separadas por coma (vacío = las primeras automáticamente). Ejemplo:  name, price, change"));
+        _tableColumns = PathInput(string.Join(", ", _api.Chart.TableColumns),
+            v => _api.Chart.TableColumns = v.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToList());
+        _tableBox.Children.Add(_tableColumns);
+        form.Children.Add(_tableBox);
+
+        _imageBox = new StackPanel();
+        _imageBox.Children.Add(Hint("Ruta del enlace de la imagen (por ejemplo  url,  data.image  o  photos[*].url  para varias)"));
+        _imagePath = PathInput(_api.Chart.ImagePath, v => _api.Chart.ImagePath = v);
+        _imageBox.Children.Add(_imagePath);
+        form.Children.Add(_imageBox);
+
+        _textBox = new StackPanel();
+        _textBox.Children.Add(Hint("Ruta del texto (por ejemplo  quote,  explanation  o  articles[*].title)"));
+        _textPath = PathInput(_api.Chart.TextPath, v => _api.Chart.TextPath = v);
+        _textBox.Children.Add(_textPath);
+        form.Children.Add(_textBox);
 
         // ---- Derecha: respuesta y vista previa ----
         var right = new Grid();
@@ -245,7 +286,7 @@ public sealed class ApiEditorWindow : Window
         right.Children.Add(_previewBox);
 
         // ---- Pie: eliminar, cancelar y guardar ----
-        var footer = new Grid { Background = UI.Hex("#FF16191E") };
+        var footer = new Grid { Background = UI.Hex("#FF111216") };
         footer.ColumnDefinitions.Add(new ColumnDefinition());
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         Grid.SetRow(footer, 2);
@@ -273,6 +314,7 @@ public sealed class ApiEditorWindow : Window
         };
         Closed += (_, _) => { _testCts?.Cancel(); _doc?.Dispose(); };
 
+        RenderParams(focusLast: false);
         RenderFields();
         RenderChartOptions();
         UpdatePreview();
@@ -291,7 +333,7 @@ public sealed class ApiEditorWindow : Window
         _leaves.Children.Clear();
         try
         {
-            var doc = await ApiHub.FetchAsync(Http, _url.Text, _headers.Text, cts.Token);
+            var doc = await ApiHub.FetchAsync(Http, _url.Text, _params, cts.Token);
             if (cts.IsCancellationRequested) { doc.Dispose(); return; }
             _doc?.Dispose();
             _doc = doc;
@@ -347,13 +389,22 @@ public sealed class ApiEditorWindow : Window
             row.ColumnDefinitions.Add(new ColumnDefinition());
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-            var path = UI.Label(leaf.Path, 12, leaf.IsSeries ? UI.Accent : UI.White);
+            var path = UI.Label(leaf.Path, 12, leaf.IsSeries || leaf.IsTable || leaf.IsImage ? UI.Accent : UI.White);
             path.FontFamily = new FontFamily("Consolas, Segoe UI");
             texts.Children.Add(path);
             texts.Children.Add(UI.Label(leaf.Sample, 11, UI.Dim));
             row.Children.Add(texts);
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            if (leaf.IsSeries && leaf.IsNumber && ApiExplorer.IsTime(leaf))
+            if (leaf.IsTable)
+                buttons.Children.Add(SmallButton("Tabla", () => UseView(ApiChartKind.Table, leaf.Path)));
+            else if (leaf.IsImage)
+                buttons.Children.Add(SmallButton("Imagen", () => UseView(ApiChartKind.Image, leaf.Path)));
+            else if (leaf.IsLongText)
+            {
+                buttons.Children.Add(SmallButton("Texto", () => UseView(ApiChartKind.Text, leaf.Path)));
+                buttons.Children.Add(SmallButton("+ Dato", () => AddField(leaf)));
+            }
+            else if (leaf.IsSeries && leaf.IsNumber && ApiExplorer.IsTime(leaf))
                 buttons.Children.Add(SmallButton("Etiquetas", () => { _api.Chart.LabelsPath = leaf.Path; RenderChartOptions(); UpdatePreview(); }));
             else if (leaf.IsSeries && leaf.IsNumber)
                 buttons.Children.Add(SmallButton("Graficar", () => UseSeries(leaf.Path)));
@@ -366,6 +417,31 @@ public sealed class ApiEditorWindow : Window
             _leaves.Children.Add(row);
         }
         if (leaves.Count == 0) _leaves.Children.Add(UI.Label("La respuesta está vacía.", 12, UI.Dim));
+    }
+
+    /// <summary>Elige la vista principal desde la respuesta (tabla, imagen o texto).</summary>
+    void UseView(ApiChartKind kind, string path)
+    {
+        _api.Chart.Kind = kind;
+        switch (kind)
+        {
+            case ApiChartKind.Table:
+                _api.Chart.TablePath = path;
+                _api.Chart.TableColumns = new List<string>();
+                _tablePath.Text = path;
+                _tableColumns.Text = "";
+                break;
+            case ApiChartKind.Image:
+                _api.Chart.ImagePath = path;
+                _imagePath.Text = path;
+                break;
+            case ApiChartKind.Text:
+                _api.Chart.TextPath = path;
+                _textPath.Text = path;
+                break;
+        }
+        RenderChartOptions();
+        UpdatePreview();
     }
 
     void UseSeries(string path)
@@ -457,10 +533,22 @@ public sealed class ApiEditorWindow : Window
     void RenderChartOptions()
     {
         _chartKind.Children.Clear();
-        _chartKind.Children.Add(UI.Segmented(new[] { (ApiChartKind.None, "Sin gráfica"), (ApiChartKind.Line, "Línea"), (ApiChartKind.Bars, "Barras") },
+        _chartKind.Children.Add(UI.Segmented(new[]
+            {
+                (ApiChartKind.None, "Solo datos"), (ApiChartKind.Line, "Línea"), (ApiChartKind.Bars, "Barras"),
+                (ApiChartKind.Table, "Tabla"), (ApiChartKind.Image, "Imagen"), (ApiChartKind.Text, "Texto"),
+            },
             _api.Chart.Kind, v => { _api.Chart.Kind = v; RenderChartOptions(); UpdatePreview(); }));
 
-        bool on = _api.Chart.Kind != ApiChartKind.None;
+        var kind = _api.Chart.Kind;
+        _tableBox.Visibility = kind == ApiChartKind.Table ? Visibility.Visible : Visibility.Collapsed;
+        _imageBox.Visibility = kind == ApiChartKind.Image ? Visibility.Visible : Visibility.Collapsed;
+        _textBox.Visibility = kind == ApiChartKind.Text ? Visibility.Visible : Visibility.Collapsed;
+        if (_tablePath.Text != _api.Chart.TablePath) _tablePath.Text = _api.Chart.TablePath;
+        if (_imagePath.Text != _api.Chart.ImagePath) _imagePath.Text = _api.Chart.ImagePath;
+        if (_textPath.Text != _api.Chart.TextPath) _textPath.Text = _api.Chart.TextPath;
+
+        bool on = kind is ApiChartKind.Line or ApiChartKind.Bars;
         bool series = _api.Chart.SeriesPath.Length > 0;
         _chartSource.Children.Clear();
         _chartSource.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
@@ -507,9 +595,14 @@ public sealed class ApiEditorWindow : Window
             _previewState.Numbers.Clear();
             _previewState.Series.Clear();
             _previewState.SeriesLabels.Clear();
+            _previewState.TableHeaders.Clear();
+            _previewState.TableRows.Clear();
+            _previewState.ImageUrls.Clear();
+            _previewState.Text = "";
         }
 
-        IReadOnlyList<double> chart = copy.Chart.SeriesPath.Length > 0
+        IReadOnlyList<double> chart = copy.Chart.Kind is not (ApiChartKind.Line or ApiChartKind.Bars) ? Array.Empty<double>()
+            : copy.Chart.SeriesPath.Length > 0
             ? _previewState.Series
             : ApiHub.Instance.History(copy.Id, copy.Chart.HistoryField) is { Count: > 0 } h
                 ? h
@@ -532,7 +625,7 @@ public sealed class ApiEditorWindow : Window
         }
         _api.Title = _title.Text.Trim().Length > 0 ? _title.Text.Trim() : TitleFromUrl(url);
         _api.Url = url;
-        _api.Headers = _headers.Text.Trim();
+        _api.Params = _params.Where(p => p.Name.Trim().Length > 0).ToList();
         _api.Fields.RemoveAll(f => string.IsNullOrWhiteSpace(f.Path));
         if (_api.Chart.HistoryField >= _api.Fields.Count) _api.Chart.HistoryField = 0;
 
@@ -698,6 +791,134 @@ public sealed class ApiEditorWindow : Window
         row.Children.Add(sw);
         return row;
     }
+
+    /// <summary>Caja para escribir una ruta del JSON; actualiza el modelo y la vista previa al escribir.</summary>
+    TextBox PathInput(string text, Action<string> set)
+    {
+        var t = Input();
+        t.FontFamily = new FontFamily("Consolas, Segoe UI");
+        t.Text = text;
+        t.TextChanged += (_, _) => { set(t.Text.Trim()); UpdatePreview(); };
+        return t;
+    }
+
+    // ------------------------------------------------------------------
+    // Claves y tokens: nombre + valor (oculto), como encabezado o en la URL
+    // ------------------------------------------------------------------
+    void RenderParams(bool focusLast)
+    {
+        _paramsList.Children.Clear();
+        Control? last = null;
+        for (int i = 0; i < _params.Count; i++)
+        {
+            var p = _params[i];
+            int index = i;
+            var card = new Border { Background = UI.CardBg, CornerRadius = new CornerRadius(12), Padding = new Thickness(10, 8, 10, 8), Margin = new Thickness(0, 0, 0, 8) };
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.7, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var nameHint = UI.Label("Nombre", 10, UI.Dim);
+            grid.Children.Add(nameHint);
+            var valueHint = UI.Label("Valor (token o clave)", 10, UI.Dim);
+            Grid.SetColumn(valueHint, 2);
+            grid.Children.Add(valueHint);
+
+            var name = Input(32);
+            name.Text = p.Name;
+            name.FontFamily = new FontFamily("Consolas, Segoe UI");
+            name.Margin = new Thickness(0, 3, 0, 0);
+            name.TextChanged += (_, _) => p.Name = name.Text;
+            Grid.SetRow(name, 1);
+            grid.Children.Add(name);
+
+            // Valor oculto con botón para verlo.
+            var hidden = new PasswordBox
+            {
+                Height = 32,
+                Password = p.Value,
+                Background = UI.ButtonBg,
+                Foreground = UI.White,
+                CaretBrush = UI.Accent,
+                SelectionBrush = UI.Accent,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(10, 0, 10, 0),
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 3, 0, 0),
+            };
+            var shown = Input(32);
+            shown.Text = p.Value;
+            shown.FontFamily = new FontFamily("Consolas, Segoe UI");
+            shown.Margin = new Thickness(0, 3, 0, 0);
+            shown.Visibility = Visibility.Collapsed;
+            hidden.PasswordChanged += (_, _) => { p.Value = hidden.Password; if (shown.Text != p.Value) shown.Text = p.Value; };
+            shown.TextChanged += (_, _) => { p.Value = shown.Text; if (hidden.Password != p.Value) hidden.Password = p.Value; };
+            Grid.SetRow(hidden, 1);
+            Grid.SetColumn(hidden, 2);
+            Grid.SetRow(shown, 1);
+            Grid.SetColumn(shown, 2);
+            grid.Children.Add(hidden);
+            grid.Children.Add(shown);
+
+            var eyeIcon = UI.Icon("\uE7B3", 13, UI.Dim);
+            var eye = UI.Button(eyeIcon, () =>
+            {
+                bool show = shown.Visibility != Visibility.Visible;
+                shown.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                hidden.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+                eyeIcon.Foreground = show ? UI.Accent : UI.Dim;
+            }, 32, 32, 16, Brushes.Transparent);
+            eye.ToolTip = "Mostrar u ocultar";
+            eye.Margin = new Thickness(4, 3, 0, 0);
+            Grid.SetRow(eye, 1);
+            Grid.SetColumn(eye, 3);
+            grid.Children.Add(eye);
+
+            var remove = UI.Button(UI.Icon(UI.GDelete, 12, UI.Dim), () => { _params.RemoveAt(index); RenderParams(focusLast: false); }, 32, 32, 16, Brushes.Transparent);
+            remove.ToolTip = "Quitar";
+            remove.Margin = new Thickness(0, 3, 0, 0);
+            Grid.SetRow(remove, 1);
+            Grid.SetColumn(remove, 4);
+            grid.Children.Add(remove);
+
+            var where = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+            var whereLabel = UI.Label("Enviar como", 11, UI.Dim);
+            whereLabel.VerticalAlignment = VerticalAlignment.Center;
+            whereLabel.Margin = new Thickness(0, 0, 8, 6);
+            where.Children.Add(whereLabel);
+            where.Children.Add(UI.Segmented(new[] { (false, "Encabezado"), (true, "Parámetro en la URL") }, p.InUrl, v => p.InUrl = v));
+            Grid.SetRow(where, 2);
+            Grid.SetColumnSpan(where, 5);
+            grid.Children.Add(where);
+
+            card.Child = grid;
+            _paramsList.Children.Add(card);
+            last = p.Name.Length == 0 ? name : hidden;
+        }
+        if (focusLast && last != null) Dispatcher.BeginInvoke(new Action(() => last.Focus()), System.Windows.Threading.DispatcherPriority.Input);
+    }
+
+    /// <summary>Marco oscuro en Windows 11 (borde y modo oscuro); en Windows 10 no hace nada.</summary>
+    static void DarkFrame(IntPtr hwnd)
+    {
+        try
+        {
+            int on = 1;
+            DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int));          // modo oscuro
+            int border = 0x00100D0C;                                         // COLORREF (BGR) casi negro
+            DwmSetWindowAttribute(hwnd, 34, ref border, sizeof(int));      // color del borde
+        }
+        catch { }
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
     /// <summary>Barra de desplazamiento delgada y oscura (la de Windows es clara y ancha).</summary>
     static Style DarkScrollBar()

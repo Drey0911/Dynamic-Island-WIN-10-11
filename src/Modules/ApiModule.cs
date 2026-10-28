@@ -33,7 +33,7 @@ public sealed class ApiModule : IslandModule
     readonly TextBlock _bubbleLetter;
     int _index;
     double _width = 200;
-    string? _currentId;
+    string? _currentId, _thumbUrl;
 
     public override FrameworkElement CompactView => _compact;
     public override FrameworkElement BubbleView => _bubble;
@@ -103,13 +103,28 @@ public sealed class ApiModule : IslandModule
         var state = ApiHub.Instance.State(api.Id);
         _letter.Text = _bubbleLetter.Text = Initial(api.Title);
         _title.Text = api.Title;
-        _value.Text = state.Error != null ? "Error" : state.Values.Count > 0 ? state.Values[0] : "...";
+        _value.Text = state.Error != null ? "Error"
+            : state.Values.Count > 0 ? state.Values[0]
+            : api.Chart.Kind == ApiChartKind.Text && state.Text.Length > 0 ? Shorten(state.Text, 40)
+            : api.Chart.Kind == ApiChartKind.Table && state.TableRows.Count > 0 ? $"{state.TableRows.Count} filas"
+            : api.Chart.Kind == ApiChartKind.Image && state.ImageUrls.Count > 0 ? "Imagen"
+            : "...";
         _value.Foreground = state.Error != null ? UI.Red : UI.White;
         if (api.Fields.Count > 0 && api.Fields[0].ColorSign && state.Numbers.Count > 0 && state.Numbers[0] is double d)
             _value.Foreground = d > 0 ? UI.Green : d < 0 ? UI.Red : UI.White;
 
+        // Con vista de imagen, la miniatura reemplaza la letra.
+        string? thumb = api.Chart.Kind == ApiChartKind.Image ? state.ImageUrls.FirstOrDefault() : null;
+        if (thumb != _thumbUrl)
+        {
+            _thumbUrl = thumb;
+            _badge.Background = UI.Accent;
+            _letter.Visibility = Visibility.Visible;
+            if (thumb != null) _ = LoadThumb(thumb);
+        }
+
         var chart = ApiHub.Instance.ChartValues(api);
-        bool hasChart = api.Chart.Kind != ApiChartKind.None && chart.Count > 1;
+        bool hasChart = api.Chart.Kind is ApiChartKind.Line or ApiChartKind.Bars && chart.Count > 1;
         _mini.Visibility = hasChart ? Visibility.Visible : Visibility.Collapsed;
         if (hasChart)
         {
@@ -125,6 +140,20 @@ public sealed class ApiModule : IslandModule
         if (resized) _width = target;
         if (!IsActive) SetActive(true);
         else if (resized) Raise();
+    }
+
+    async System.Threading.Tasks.Task LoadThumb(string url)
+    {
+        var img = await ApiImages.LoadAsync(url);
+        if (img == null || url != _thumbUrl) return;
+        _badge.Background = new System.Windows.Media.ImageBrush(img) { Stretch = System.Windows.Media.Stretch.UniformToFill };
+        _letter.Visibility = Visibility.Collapsed;
+    }
+
+    static string Shorten(string s, int max)
+    {
+        s = s.Replace('\n', ' ').Trim();
+        return s.Length > max ? s[..(max - 1)] + "…" : s;
     }
 
     static string Initial(string title)

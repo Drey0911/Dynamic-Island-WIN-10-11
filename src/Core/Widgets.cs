@@ -72,25 +72,35 @@ public sealed class WaterLayer : Canvas
         IsHitTestVisible = false;
         ClipToBounds = true;
 
+        Paint();
+        Loaded += (_, _) => { UI.AccentChanged -= Paint; UI.AccentChanged += Paint; };
+        Unloaded += (_, _) => UI.AccentChanged -= Paint;
+
+        Children.Add(_back);
+        Children.Add(_front);
+        Children.Add(_line);
+        SizeChanged += (_, e) => { _width = e.NewSize.Width; _height = e.NewSize.Height; };
+    }
+
+    /// <summary>Colores del agua según el acento actual.</summary>
+    void Paint()
+    {
+        var a = UI.AccentColor;
+        var l = UI.AccentLight.Color;
         var fill = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb(0x55, 0x4D, 0xD9, 0xEC), 0));
-        fill.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x4D, 0xD9, 0xEC), 1));
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb(0x55, a.R, a.G, a.B), 0));
+        fill.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, a.R, a.G, a.B), 1));
         fill.Freeze();
         _front.Fill = fill;
         _back.Fill = fill;
 
         // La línea de brillo se desvanece hacia los lados.
         var stroke = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(1, 0) };
-        stroke.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x96, 0xE8, 0xF7), 0));
-        stroke.GradientStops.Add(new GradientStop(Color.FromArgb(0xFF, 0x96, 0xE8, 0xF7), 0.5));
-        stroke.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, 0x96, 0xE8, 0xF7), 1));
+        stroke.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, l.R, l.G, l.B), 0));
+        stroke.GradientStops.Add(new GradientStop(Color.FromArgb(0xFF, l.R, l.G, l.B), 0.5));
+        stroke.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, l.R, l.G, l.B), 1));
         stroke.Freeze();
         _line.Stroke = stroke;
-
-        Children.Add(_back);
-        Children.Add(_front);
-        Children.Add(_line);
-        SizeChanged += (_, e) => { _width = e.NewSize.Width; _height = e.NewSize.Height; };
     }
 
     /// <param name="bass">Graves 0–1.</param>

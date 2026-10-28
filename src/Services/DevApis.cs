@@ -38,12 +38,24 @@ public sealed class ApiField
     public bool Compact { get; set; }
 }
 
-public enum ApiChartKind { None, Line, Bars }
+/// <summary>Vista principal de la API (debajo de los datos).</summary>
+public enum ApiChartKind { None, Line, Bars, Table, Image, Text }
 
-/// <summary>Gráfica de la API: una serie de la respuesta o el historial de un dato.</summary>
+/// <summary>
+/// Vista principal de la API: gráfica (serie de la respuesta o historial de un dato), tabla, imagen o texto.
+/// (Se llama "Chart" por compatibilidad con los ajustes guardados.)
+/// </summary>
 public sealed class ApiChart
 {
     public ApiChartKind Kind { get; set; } = ApiChartKind.None;
+    /// <summary>Tabla: ruta de la lista (por ejemplo "data.items" o "data.items[*]").</summary>
+    public string TablePath { get; set; } = "";
+    /// <summary>Tabla: columnas a mostrar; vacía = las primeras automáticamente.</summary>
+    public List<string> TableColumns { get; set; } = new();
+    /// <summary>Imagen: ruta del enlace de la imagen (con [*] muestra varias).</summary>
+    public string ImagePath { get; set; } = "";
+    /// <summary>Texto: ruta de un texto largo (frase, descripción, noticia).</summary>
+    public string TextPath { get; set; } = "";
     /// <summary>Ruta con [*] para tomar una serie de la respuesta (por ejemplo "prices[*][1]"). Vacía = historial.</summary>
     public string SeriesPath { get; set; } = "";
     /// <summary>Etiquetas opcionales de la serie (por ejemplo "hourly.time[*]").</summary>
@@ -58,7 +70,7 @@ public sealed class ApiWidget
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..10];
     public string Title { get; set; } = "Nueva API";
     public string Url { get; set; } = "";
-    /// <summary>Encabezados "Nombre: valor" por línea. Se guardan cifrados con el usuario de Windows.</summary>
+    /// <summary>Claves, tokens y encabezados (lista de ApiParam en JSON), cifrados con el usuario de Windows.</summary>
     public string HeadersProtected { get; set; } = "";
     public int RefreshSeconds { get; set; } = 60;
     public bool ShowInIsland { get; set; } = true;
@@ -66,17 +78,67 @@ public sealed class ApiWidget
     public List<ApiField> Fields { get; set; } = new();
     public ApiChart Chart { get; set; } = new();
 
+    /// <summary>Claves y tokens ya descifrados (solo en memoria).</summary>
+    [JsonIgnore]
+    public List<ApiParam> Params
+    {
+        get => ApiParam.Parse(Secret.Unprotect(HeadersProtected));
+        set => HeadersProtected = value.Count == 0 ? "" : Secret.Protect(JsonSerializer.Serialize(value.Where(p => p.Name.Trim().Length > 0).ToList()));
+    }
+
+    /// <summary>Formato de texto "Nombre: valor" por línea (compatibilidad y pruebas).</summary>
     [JsonIgnore]
     public string Headers
     {
-        get => Secret.Unprotect(HeadersProtected);
-        set => HeadersProtected = Secret.Protect(value);
+        get => string.Join("\n", Params.Where(p => !p.InUrl).Select(p => $"{p.Name}: {p.Value}"));
+        set => Params = ApiParam.Parse(value);
     }
 
     public ApiWidget Clone()
     {
         var json = JsonSerializer.Serialize(this);
         return JsonSerializer.Deserialize<ApiWidget>(json) ?? new ApiWidget();
+    }
+}
+
+/// <summary>Una clave o token: se envía como encabezado o como parámetro de la URL.</summary>
+public sealed class ApiParam
+{
+    public string Name { get; set; } = "";
+    public string Value { get; set; } = "";
+    /// <summary>true = se agrega a la URL (?nombre=valor); false = encabezado HTTP.</summary>
+    public bool InUrl { get; set; }
+
+    /// <summary>Lee la lista guardada (JSON) o el formato anterior "Nombre: valor" por línea.</summary>
+    public static List<ApiParam> Parse(string text)
+    {
+        text = (text ?? "").Trim();
+        if (text.Length == 0) return new List<ApiParam>();
+        if (text.StartsWith("["))
+        {
+            try { return JsonSerializer.Deserialize<List<ApiParam>>(text) ?? new List<ApiParam>(); }
+            catch { }
+        }
+        var list = new List<ApiParam>();
+        foreach (var line in text.Split('\n'))
+        {
+            int colon = line.IndexOf(':');
+            if (colon <= 0) continue;
+            list.Add(new ApiParam { Name = line[..colon].Trim(), Value = line[(colon + 1)..].Trim() });
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Valor que se envía. Si el encabezado es Authorization y el valor es un token suelto (por ejemplo un JWT),
+    /// se le antepone "Bearer " automáticamente.
+    /// </summary>
+    public string Effective()
+    {
+        string v = Value.Trim();
+        if (!InUrl && Name.Trim().Equals("Authorization", StringComparison.OrdinalIgnoreCase) && v.Length > 0 && !v.Contains(' '))
+            return "Bearer " + v;
+        return v;
     }
 }
 
@@ -200,7 +262,15 @@ public static class JsonPathLite
 }
 
 /// <summary>Un dato encontrado al explorar la respuesta (para elegir qué mostrar).</summary>
-public sealed record ApiLeaf(string Path, string Sample, bool IsNumber, bool IsSeries, int Count);
+public sealed record ApiLeaf(string Path, string Sample, bool IsNumber, bool IsSeries, int Count)
+{
+    /// <summary>Lista de objetos: se puede ver como tabla.</summary>
+    public bool IsTable { get; init; }
+    /// <summary>Enlace a una imagen.</summary>
+    public bool IsImage { get; init; }
+    /// <summary>Texto largo (frase, descripción).</summary>
+    public bool IsLongText { get; init; }
+}
 
 /// <summary>Explora una respuesta JSON y propone datos y series para graficar.</summary>
 public static class ApiExplorer
@@ -246,7 +316,8 @@ public static class ApiExplorer
                 }
                 else if (n >= 2 && first.ValueKind == JsonValueKind.Object)
                 {
-                    // Lista de objetos: cada propiedad numérica es una serie; el primer elemento se explora.
+                    // Lista de objetos: se puede ver como tabla; cada propiedad numérica es una serie.
+                    list.Add(new ApiLeaf(path + "[*]", $"{n} filas: {string.Join(", ", first.EnumerateObject().Take(4).Select(p => p.Name))}", false, false, n) { IsTable = true });
                     foreach (var p in first.EnumerateObject())
                         if (JsonPathLite.Number(p.Value) != null)
                             list.Add(new ApiLeaf(JsonPathLite.Join(path + "[*]", p.Name), $"{n} valores", true, true, n));
@@ -255,14 +326,38 @@ public static class ApiExplorer
                 else
                 {
                     if (n >= 2 && first.ValueKind == JsonValueKind.String)
-                        list.Add(new ApiLeaf(path + "[*]", $"{n} textos", false, true, n));
+                    {
+                        bool images = IsImageUrl(first.GetString() ?? "", path);
+                        list.Add(new ApiLeaf(path + "[*]", images ? $"{n} imágenes" : $"{n} textos", false, !images, n) { IsImage = images });
+                    }
                     Walk(first, path + "[0]", list, max, depth + 1);
                 }
                 break;
             default:
-                list.Add(new ApiLeaf(path, Short(JsonPathLite.Text(e)), JsonPathLite.Number(e) != null && e.ValueKind != JsonValueKind.String || IsNumericString(e), false, 1));
+                string text = JsonPathLite.Text(e);
+                bool isText = e.ValueKind == JsonValueKind.String;
+                list.Add(new ApiLeaf(path, Short(text), JsonPathLite.Number(e) != null && !isText || IsNumericString(e), false, 1)
+                {
+                    IsImage = isText && IsImageUrl(text, path),
+                    IsLongText = isText && text.Length >= 50 && !text.StartsWith("http", StringComparison.OrdinalIgnoreCase),
+                });
                 break;
         }
+    }
+
+    static readonly string[] ImageExt = { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp" };
+    static readonly string[] ImageWords = { "image", "img", "photo", "picture", "thumbnail", "thumb", "avatar", "icon", "logo", "poster", "imagen", "foto" };
+
+    /// <summary>¿Es un enlace a una imagen? Por la extensión o por el nombre del dato (url de "image", "thumbnail"...).</summary>
+    public static bool IsImageUrl(string value, string path)
+    {
+        if (!value.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return false;
+        string v = value.ToLowerInvariant();
+        int q = v.IndexOf('?');
+        string clean = q >= 0 ? v[..q] : v;
+        if (ImageExt.Any(clean.EndsWith)) return true;
+        string p = path.ToLowerInvariant();
+        return ImageWords.Any(p.Contains) && !clean.EndsWith(".svg");
     }
 
     static bool IsNumericString(JsonElement e) =>
@@ -291,6 +386,9 @@ public static class ApiExplorer
         // Serie: la de mejor puntaje (precios, temperaturas...) que no sea de fechas.
         var series = leaves.Where(l => l.IsSeries && l.IsNumber && l.Count >= 3 && !LooksLikeTime(l))
             .OrderByDescending(Score).FirstOrDefault();
+        // En una lista de objetos sin un número claramente interesante (ids, edades...), se ve mejor como tabla o imagen.
+        if (series != null && series.Path.Contains("[*].") && Score(series) <= 0 && leaves.Any(l => l.IsTable || l.IsImage))
+            series = null;
         if (series != null)
         {
             chart.Kind = ApiChartKind.Line;
@@ -299,16 +397,36 @@ public static class ApiExplorer
             if (labels != null) chart.LabelsPath = labels.Path;
         }
 
+        if (series == null)
+        {
+            // Sin series de números: imagen, tabla o texto, en ese orden.
+            var image = leaves.FirstOrDefault(l => l.IsImage);
+            var table = leaves.Where(l => l.IsTable).OrderByDescending(l => l.Count).FirstOrDefault();
+            var longText = leaves.Where(l => l.IsLongText).OrderByDescending(l => l.Sample.Length).FirstOrDefault();
+            if (image != null) chart = new ApiChart { Kind = ApiChartKind.Image, ImagePath = AllItems(image.Path) };
+            else if (table != null) chart = new ApiChart { Kind = ApiChartKind.Table, TablePath = table.Path };
+            else if (longText != null) chart = new ApiChart { Kind = ApiChartKind.Text, TextPath = longText.Path };
+        }
+
         foreach (var l in leaves.Where(l => l.IsNumber && !l.IsSeries && !LooksLikeTime(l)).OrderByDescending(Score).Take(2))
             fields.Add(new ApiField { Label = PrettyLabel(l.Path), Path = l.Path });
         if (fields.Count == 0)
         {
-            var text = leaves.Where(l => !l.IsSeries).OrderByDescending(Score).FirstOrDefault();
+            // Un texto corto como dato (por ejemplo un título); el largo ya va en la vista.
+            var text = leaves.Where(l => !l.IsSeries && !l.IsTable && !l.IsImage && l.Path != chart.TextPath)
+                .OrderBy(l => l.IsLongText).ThenByDescending(Score).FirstOrDefault();
             if (text != null) fields.Add(new ApiField { Label = PrettyLabel(text.Path), Path = text.Path });
         }
-        if (series == null && fields.Count > 0 && leaves.Any(l => l.Path == fields[0].Path && l.IsNumber))
+        if (series == null && chart.Kind == ApiChartKind.None && fields.Count > 0 && leaves.Any(l => l.Path == fields[0].Path && l.IsNumber))
             chart = new ApiChart { Kind = ApiChartKind.Line, HistoryField = 0 };
         return (fields, chart);
+    }
+
+    /// <summary>"photos[0].url" -> "photos[*].url": todas las imágenes de la lista, no solo la primera.</summary>
+    static string AllItems(string path)
+    {
+        int i = path.LastIndexOf("[0]", StringComparison.Ordinal);
+        return i < 0 ? path : path[..i] + "[*]" + path[(i + 3)..];
     }
 
     static readonly string[] Good = { "price", "precio", "rate", "value", "valor", "usd", "eur", "cop", "temp", "current", "close", "last", "amount", "total", "count", "score", "speed", "humidity" };
@@ -425,6 +543,10 @@ public sealed class ApiState
     public List<double?> Numbers { get; } = new();
     public List<double> Series { get; } = new();
     public List<string> SeriesLabels { get; } = new();
+    public List<string> TableHeaders { get; } = new();
+    public List<List<string>> TableRows { get; } = new();
+    public List<string> ImageUrls { get; } = new();
+    public string Text { get; set; } = "";
 }
 
 /// <summary>
@@ -452,7 +574,7 @@ public sealed class ApiHub
     ApiHub()
     {
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.8 (Windows; modo DEV)");
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.9 (Windows; modo DEV)");
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/json");
         _tick.Tick += (_, _) => Tick();
         _saveHistory.Tick += (_, _) => SaveHistory();
@@ -510,7 +632,7 @@ public sealed class ApiHub
         state.Loading = true;
         try
         {
-            var doc = await FetchAsync(_http, api.Url, api.Headers);
+            var doc = await FetchAsync(_http, api.Url, api.Params);
             Apply(api, state, doc, recordHistory: true);
             state.Error = null;
             state.Updated = DateTime.Now;
@@ -527,18 +649,37 @@ public sealed class ApiHub
     }
 
     /// <summary>Pide una URL y devuelve el JSON. Lanza una excepción con un mensaje claro si falla.</summary>
-    public static async Task<JsonDocument> FetchAsync(HttpClient http, string url, string headers, CancellationToken ct = default)
+    public static Task<JsonDocument> FetchAsync(HttpClient http, string url, string headers, CancellationToken ct = default) =>
+        FetchAsync(http, url, ApiParam.Parse(headers), ct);
+
+    /// <summary>Pide una URL con sus claves (encabezados o parámetros de la URL) y devuelve el JSON.</summary>
+    public static async Task<JsonDocument> FetchAsync(HttpClient http, string url, IEnumerable<ApiParam> parameters, CancellationToken ct = default)
     {
         if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) || (uri.Scheme != "https" && uri.Scheme != "http"))
             throw new ApiException("La URL debe empezar con https://");
-        using var req = new HttpRequestMessage(HttpMethod.Get, uri);
-        foreach (var line in (headers ?? "").Split('\n'))
+        var list = parameters.Where(p => p.Name.Trim().Length > 0).ToList();
+
+        // Claves que van en la URL: ?nombre=valor (o &nombre=valor si ya hay parámetros).
+        var query = list.Where(p => p.InUrl).ToList();
+        if (query.Count > 0)
         {
-            int colon = line.IndexOf(':');
-            if (colon <= 0) continue;
-            string name = line[..colon].Trim(), value = line[(colon + 1)..].Trim();
-            if (name.Length == 0) continue;
-            if (!req.Headers.TryAddWithoutValidation(name, value)) throw new ApiException($"Encabezado no válido: {name}");
+            var sb = new StringBuilder(uri.GetLeftPart(UriPartial.Path));
+            string existing = uri.Query.TrimStart('?');
+            sb.Append('?').Append(existing);
+            foreach (var p in query)
+            {
+                if (sb[^1] != '?') sb.Append('&');
+                sb.Append(Uri.EscapeDataString(p.Name.Trim())).Append('=').Append(Uri.EscapeDataString(p.Value.Trim()));
+            }
+            uri = new Uri(sb.ToString());
+        }
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, uri);
+        foreach (var p in list.Where(p => !p.InUrl))
+        {
+            string name = p.Name.Trim();
+            if (name.Any(c => char.IsWhiteSpace(c) || c == ':')) throw new ApiException($"Nombre de encabezado no válido: {name}");
+            if (!req.Headers.TryAddWithoutValidation(name, p.Effective())) throw new ApiException($"Encabezado no válido: {name}");
         }
         using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
         if (!res.IsSuccessStatusCode)
@@ -585,9 +726,11 @@ public sealed class ApiHub
             if (recordHistory && n.HasValue) AddHistory($"{api.Id}#{i}", n.Value);
         }
 
+        ApplyView(api, state, root);
+
         state.Series.Clear();
         state.SeriesLabels.Clear();
-        if (api.Chart.Kind != ApiChartKind.None && api.Chart.SeriesPath.Length > 0)
+        if (api.Chart.Kind is ApiChartKind.Line or ApiChartKind.Bars && api.Chart.SeriesPath.Length > 0)
         {
             try
             {
@@ -614,10 +757,75 @@ public sealed class ApiHub
         }
     }
 
+    /// <summary>Tabla, imágenes y texto de la vista principal.</summary>
+    static void ApplyView(ApiWidget api, ApiState state, JsonElement root)
+    {
+        state.TableHeaders.Clear();
+        state.TableRows.Clear();
+        state.ImageUrls.Clear();
+        state.Text = "";
+        var c = api.Chart;
+        try
+        {
+            switch (c.Kind)
+            {
+                case ApiChartKind.Table when c.TablePath.Length > 0:
+                    BuildTable(root, c, state);
+                    break;
+                case ApiChartKind.Image when c.ImagePath.Length > 0:
+                    foreach (var e in JsonPathLite.Select(root, c.ImagePath).Take(8))
+                        if (e.ValueKind == JsonValueKind.String && e.GetString() is { Length: > 0 } url && url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                            state.ImageUrls.Add(url);
+                    break;
+                case ApiChartKind.Text when c.TextPath.Length > 0:
+                    state.Text = string.Join("\n\n", JsonPathLite.Select(root, c.TextPath).Take(10).Select(JsonPathLite.Text));
+                    break;
+            }
+        }
+        catch { }
+    }
+
+    public const int TableMaxRows = 100;
+
+    static void BuildTable(JsonElement root, ApiChart c, ApiState state)
+    {
+        string path = c.TablePath.Trim();
+        if (!path.EndsWith("[*]")) path += "[*]";
+        var rows = JsonPathLite.Select(root, path).Take(TableMaxRows).ToList();
+        if (rows.Count == 0) return;
+
+        var columns = c.TableColumns.Where(x => x.Trim().Length > 0).Select(x => x.Trim()).ToList();
+        if (columns.Count == 0)
+        {
+            // Automáticas: las primeras propiedades simples (texto, número o sí/no) del primer elemento.
+            if (rows[0].ValueKind == JsonValueKind.Object)
+                columns = rows[0].EnumerateObject()
+                    .Where(p => p.Value.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
+                    .Select(p => p.Name).Take(5).ToList();
+            else if (rows[0].ValueKind == JsonValueKind.Array)
+                columns = Enumerable.Range(0, Math.Min(5, rows[0].GetArrayLength())).Select(i => $"[{i}]").ToList();
+            else columns = new List<string> { "" };
+        }
+        state.TableHeaders.AddRange(columns.Select(col => col.Length == 0 ? "Valor" : ApiExplorer.PrettyLabel(col)));
+        foreach (var r in rows)
+        {
+            var cells = new List<string>();
+            foreach (var col in columns)
+            {
+                JsonElement? v = col.Length == 0 ? r : JsonPathLite.First(r, col);
+                if (v == null) { cells.Add(""); continue; }
+                cells.Add(v.Value.ValueKind == JsonValueKind.Number && JsonPathLite.Number(v.Value) is double d
+                    ? ApiFormat.Number(d)
+                    : JsonPathLite.Text(v.Value));
+            }
+            state.TableRows.Add(cells);
+        }
+    }
+
     /// <summary>Valores para la gráfica: la serie de la respuesta o el historial guardado.</summary>
     public IReadOnlyList<double> ChartValues(ApiWidget api)
     {
-        if (api.Chart.Kind == ApiChartKind.None) return Array.Empty<double>();
+        if (api.Chart.Kind is not (ApiChartKind.Line or ApiChartKind.Bars)) return Array.Empty<double>();
         if (api.Chart.SeriesPath.Length > 0) return State(api.Id).Series;
         return History(api.Id, Math.Clamp(api.Chart.HistoryField, 0, Math.Max(0, api.Fields.Count - 1)));
     }

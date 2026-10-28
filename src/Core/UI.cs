@@ -20,12 +20,58 @@ public static class UI
     public static readonly FontFamily TextFont = new("Segoe UI Variable Text, Segoe UI");
     public static readonly FontFamily DisplayFont = new("Segoe UI Variable Display, Segoe UI");
 
-    // Paleta celeste / aguamarina (la del logo)
-    public static readonly SolidColorBrush Accent = Hex("#FF4DD9EC");
-    public static readonly SolidColorBrush AccentLight = Hex("#FF96E8F7");
-    public static readonly SolidColorBrush Aqua = Hex("#FF34CECE");
-    public static readonly SolidColorBrush AccentSoft = Hex("#334DD9EC");
-    public static readonly SolidColorBrush AccentFaint = Hex("#1A4DD9EC");
+    // Color de acento: celeste del logo por defecto, cambiable en Ajustes.
+    // Los pinceles no se congelan para poder cambiar su color en vivo; no los congeles al usarlos.
+    public const string DefaultAccent = "#74D4E2";
+    public static readonly SolidColorBrush Accent = new(), AccentLight = new(), Aqua = new(), AccentSoft = new(), AccentFaint = new();
+    public static event Action? AccentChanged;
+    public static Color AccentColor => Accent.Color;
+    /// <summary>"#RRGGBB" del acento; se puede leer desde cualquier hilo.</summary>
+    public static string AccentHex { get; private set; } = DefaultAccent;
+
+    static UI() => ApplyAccent(DefaultAccent);
+
+    /// <summary>Lee "#RRGGBB" (o "RRGGBB").</summary>
+    public static bool TryParseColor(string? text, out Color color)
+    {
+        color = default;
+        var t = (text ?? "").Trim().TrimStart('#');
+        if (t.Length != 6 || !int.TryParse(t, System.Globalization.NumberStyles.HexNumber, null, out int v)) return false;
+        color = Color.FromRgb((byte)(v >> 16), (byte)(v >> 8), (byte)v);
+        return true;
+    }
+
+    static double Luminance(Color c)
+    {
+        static double L(byte b) { double x = b / 255.0; return x <= 0.03928 ? x / 12.92 : Math.Pow((x + 0.055) / 1.055, 2.4); }
+        return 0.2126 * L(c.R) + 0.7152 * L(c.G) + 0.0722 * L(c.B);
+    }
+
+    static Color Mix(Color a, Color b, double t) => Color.FromRgb(
+        (byte)Math.Round(a.R + (b.R - a.R) * t), (byte)Math.Round(a.G + (b.G - a.G) * t), (byte)Math.Round(a.B + (b.B - a.B) * t));
+
+    /// <summary>Aclara un color hasta que se lea bien sobre negro (iconos y textos).</summary>
+    public static Color Readable(Color c)
+    {
+        for (int i = 0; i < 20 && Luminance(c) < 0.32; i++) c = Mix(c, Colors.White, 0.1);
+        return c;
+    }
+
+    /// <summary>Cambia el acento de toda la app al momento. Devuelve false si el color no es válido.</summary>
+    public static bool ApplyAccent(string? hex)
+    {
+        if (!TryParseColor(hex, out var c)) { if (Accent.Color.A != 0) return false; TryParseColor(DefaultAccent, out c); }
+        c = Readable(c);
+        if (Accent.Color == c) return true;
+        Accent.Color = c;
+        AccentLight.Color = Mix(c, Colors.White, 0.4);
+        Aqua.Color = Mix(c, Colors.Black, 0.1);
+        AccentSoft.Color = Color.FromArgb(0x33, c.R, c.G, c.B);
+        AccentFaint.Color = Color.FromArgb(0x1A, c.R, c.G, c.B);
+        AccentHex = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+        AccentChanged?.Invoke();
+        return true;
+    }
 
     public static readonly SolidColorBrush White = Hex("#FFFFFFFF");
     public static readonly SolidColorBrush Black = Hex("#FF000000");

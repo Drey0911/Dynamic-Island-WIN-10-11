@@ -464,6 +464,9 @@ public sealed class SettingsPage
         styleHint.Margin = new Thickness(0, 0, 0, 10);
         _stack.Children.Add(styleHint);
         Choice("Tamaño de la isla", new[] { (0.9, "Pequeña"), (1.0, "Normal"), (1.15, "Grande") }, S.IslandScale, v => S.IslandScale = v);
+        Choice("Fondo de la isla", new[] { ("translucent", "Negro translúcido"), ("solid", "Negro sólido") },
+            S.IslandBackground, v => S.IslandBackground = v);
+        AccentPicker();
         Choice("Abrir al pasar el mouse", new[] { (60, "Rápido"), (120, "Normal"), (350, "Lento") }, S.HoverDelayMs, v => S.HoverDelayMs = v);
         Toggle("Atajos de teclado", "Ctrl+Shift+Espacio panel · Ctrl+Shift+Y traducir · Ctrl+Shift+F9 micrófono · Ctrl+Shift+F10/F11/F12 anterior, pausa, siguiente",
             () => S.HotkeysEnabled, v => S.HotkeysEnabled = v);
@@ -571,7 +574,7 @@ public sealed class SettingsPage
         });
 
         Section("Beta DEV mode");
-        Toggle("Beta DEV mode", "Agrega tus propias APIs gratuitas (precios, clima, lo que quieras) como módulos de la isla, con datos y gráficas. Todo se guarda y se conserva al apagar el PC.",
+        Toggle("Beta DEV mode", "Agrega tus propias APIs gratuitas (precios, clima, lo que quieras) como módulos de la isla, con datos y gráficas.",
             () => S.DevMode, v => { S.DevMode = v; }, badge: "Beta");
         _stack.Children.Add(_dev);
         RenderDev();
@@ -852,6 +855,76 @@ public sealed class SettingsPage
         Grid.SetColumn(sw, 1);
         row.Children.Add(sw);
         _stack.Children.Add(row);
+    }
+
+    static readonly (string Hex, string Name)[] AccentPresets =
+    {
+        (UI.DefaultAccent, "Celeste (logo)"), ("#6FA8FF", "Azul"), ("#A99BFF", "Lila"), ("#FF8DB4", "Rosa"),
+        ("#7CDB9B", "Verde"), ("#FFC266", "Ámbar"), ("#FF8A73", "Coral"), ("#E6EAF0", "Blanco"),
+    };
+
+    /// <summary>Color de acento: muestras listas y un campo para cualquier color en hexadecimal. Se aplica al instante.</summary>
+    void AccentPicker()
+    {
+        var t = UI.Label("Color de acento", 13, UI.White, FontWeights.SemiBold);
+        t.Margin = new Thickness(0, 4, 0, 6);
+        _stack.Children.Add(t);
+
+        var row = new WrapPanel { Margin = new Thickness(0, 0, 0, 4) };
+        var swatches = new List<(Border Ring, string Hex)>();
+        var input = UI.Input(30);
+        input.Width = 96;
+        input.FontFamily = new FontFamily("Consolas, Segoe UI");
+        input.Text = UI.AccentHex;
+        input.Margin = new Thickness(4, 0, 0, 6);
+        input.VerticalAlignment = VerticalAlignment.Center;
+        input.ToolTip = "Escribe un color, por ejemplo #74D4E2";
+        bool fromSwatch = false;
+
+        void Mark()
+        {
+            foreach (var (ring, hex) in swatches)
+                ring.BorderBrush = string.Equals(hex, S.AccentColor, StringComparison.OrdinalIgnoreCase) ? UI.White : Brushes.Transparent;
+        }
+        void Set(string hex)
+        {
+            if (!UI.TryParseColor(hex, out var c)) return;
+            S.AccentColor = $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+            S.Save();
+            Mark();
+        }
+
+        foreach (var (hex, name) in AccentPresets)
+        {
+            UI.TryParseColor(hex, out var c);
+            var dot = new Border { Width = 20, Height = 20, CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(c) };
+            var ring = new Border
+            {
+                Width = 28, Height = 28, CornerRadius = new CornerRadius(14), BorderThickness = new Thickness(2),
+                Margin = new Thickness(0, 0, 6, 6), Child = dot, Cursor = Cursors.Hand, ToolTip = name,
+                Background = Brushes.Transparent,
+            };
+            string h = hex;
+            ring.MouseLeftButtonUp += (_, _) => { fromSwatch = true; input.Text = h; fromSwatch = false; Set(h); };
+            swatches.Add((ring, hex));
+            row.Children.Add(ring);
+        }
+        input.TextChanged += (_, _) =>
+        {
+            if (fromSwatch) return;
+            bool ok = UI.TryParseColor(input.Text, out _);
+            input.Foreground = ok || input.Text.Trim().Length < 6 ? UI.White : UI.Red;
+            if (ok) Set(input.Text);
+        };
+        row.Children.Add(input);
+        _stack.Children.Add(row);
+        Mark();
+
+        var hint = UI.Label("Cambia el color de iconos, botones y gráficas al momento. Los colores muy oscuros se aclaran un poco para que se lean sobre el negro.", 11, UI.Dim);
+        hint.TextWrapping = TextWrapping.Wrap;
+        hint.TextTrimming = TextTrimming.None;
+        hint.Margin = new Thickness(0, 0, 0, 10);
+        _stack.Children.Add(hint);
     }
 
     void Choice<T>(string title, (T value, string label)[] options, T current, Action<T> set)

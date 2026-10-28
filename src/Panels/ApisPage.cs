@@ -13,8 +13,8 @@ using DynamicIsland.Services;
 namespace DynamicIsland.Panels;
 
 /// <summary>
-/// Tarjeta de una API: título, estado, datos y gráfica. Se usa en la pestaña APIs,
-/// en la isla abierta y como vista previa en el editor.
+/// Tarjeta de una API: título, estado, datos y la vista principal (gráfica, tabla, imagen o texto).
+/// Se usa en la pestaña APIs, en la isla abierta y como vista previa en el editor.
 /// </summary>
 public sealed class ApiCard
 {
@@ -22,9 +22,16 @@ public sealed class ApiCard
     readonly Grid _root;
     readonly TextBlock _title, _status, _change;
     readonly WrapPanel _values = new();
+    readonly ContentPresenter _view = new();
     readonly ChartView _chart = new();
+    readonly Grid _table = new();
+    readonly ScrollViewer _tableScroll;
+    readonly Grid _images = new();
+    readonly TextBlock _text;
+    readonly ScrollViewer _textScroll;
     readonly Border _refresh, _edit;
     ApiWidget? _api;
+    string _imageKey = "";
 
     /// <param name="withButtons">false = sin botones de actualizar y editar (vista previa del editor).</param>
     public ApiCard(bool withButtons = true)
@@ -64,9 +71,16 @@ public sealed class ApiCard
         Grid.SetRow(_values, 1);
         _root.Children.Add(_values);
 
-        _chart.Margin = new Thickness(0, 2, 0, 0);
-        Grid.SetRow(_chart, 2);
-        _root.Children.Add(_chart);
+        _tableScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = _table };
+        _text = UI.Label("", 13, UI.White);
+        _text.TextWrapping = TextWrapping.Wrap;
+        _text.TextTrimming = TextTrimming.None;
+        _text.LineHeight = 19;
+        _textScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Hidden, Content = _text };
+
+        _view.Margin = new Thickness(0, 2, 0, 0);
+        Grid.SetRow(_view, 2);
+        _root.Children.Add(_view);
     }
 
     public void Show(ApiWidget api, ApiState state, IReadOnlyList<double> chart)
@@ -91,6 +105,7 @@ public sealed class ApiCard
         }
 
         _values.Children.Clear();
+        bool compactValues = api.Fields.Count > 2 || api.Chart.Kind is ApiChartKind.Table or ApiChartKind.Text or ApiChartKind.Image;
         for (int i = 0; i < api.Fields.Count; i++)
         {
             var f = api.Fields[i];
@@ -98,34 +113,191 @@ public sealed class ApiCard
             double? n = i < state.Numbers.Count ? state.Numbers[i] : null;
             var block = new StackPanel { Margin = new Thickness(0, 0, 22, 2) };
             block.Children.Add(UI.Label(f.Label.Length > 0 ? f.Label : ApiExplorer.PrettyLabel(f.Path), 11, UI.Dim));
-            var v = UI.Label(value, api.Fields.Count > 2 ? 16 : 20, UI.White, FontWeights.SemiBold, display: true);
+            var v = UI.Label(value, compactValues ? 15 : 20, UI.White, FontWeights.SemiBold, display: true);
             if (f.ColorSign && n is double d) v.Foreground = d > 0 ? UI.Green : d < 0 ? UI.Red : UI.White;
-            v.MaxWidth = 260;
+            v.MaxWidth = 300;
             block.Children.Add(v);
             _values.Children.Add(block);
         }
+        _values.Visibility = api.Fields.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        bool hasChart = api.Chart.Kind != ApiChartKind.None;
-        _chart.Visibility = hasChart ? Visibility.Visible : Visibility.Collapsed;
         _change.Text = "";
-        if (hasChart)
+        switch (api.Chart.Kind)
         {
-            var labels = api.Chart.SeriesPath.Length > 0 ? state.SeriesLabels : null;
-            _chart.SetData(chart, labels, api.Chart.Kind == ApiChartKind.Bars);
-            if (ChartView.Change(chart) is double change && api.Chart.Kind == ApiChartKind.Line)
+            case ApiChartKind.Line:
+            case ApiChartKind.Bars:
+                _view.Content = _chart;
+                var labels = api.Chart.SeriesPath.Length > 0 ? state.SeriesLabels : null;
+                _chart.SetData(chart, labels, api.Chart.Kind == ApiChartKind.Bars);
+                if (ChartView.Change(chart) is double change && api.Chart.Kind == ApiChartKind.Line)
+                {
+                    if (Math.Abs(change) < 0.005)
+                    {
+                        _change.Text = "= 0 %";
+                        _change.Foreground = UI.Dim;
+                    }
+                    else
+                    {
+                        _change.Text = (change > 0 ? "▲ " : "▼ ") + Math.Abs(change).ToString("0.00") + " %";
+                        _change.Foreground = change > 0 ? UI.Green : UI.Red;
+                    }
+                }
+                break;
+            case ApiChartKind.Table:
+                _view.Content = _tableScroll;
+                BuildTable(state);
+                break;
+            case ApiChartKind.Image:
+                _view.Content = _images;
+                ShowImages(state.ImageUrls);
+                break;
+            case ApiChartKind.Text:
+                _view.Content = _textScroll;
+                _text.Text = state.Text.Length > 0 ? state.Text : (state.Updated == null ? "Esperando datos..." : "Sin texto en esa ruta.");
+                _text.Foreground = state.Text.Length > 0 ? UI.White : UI.Dim;
+                break;
+            default:
+                _view.Content = null;
+                break;
+        }
+    }
+
+    /// <summary>Tabla con encabezado fijo arriba y filas alternadas.</summary>
+    void BuildTable(ApiState state)
+    {
+        _table.Children.Clear();
+        _table.ColumnDefinitions.Clear();
+        _table.RowDefinitions.Clear();
+        if (state.TableHeaders.Count == 0)
+        {
+            _table.Children.Add(UI.Label(state.Updated == null ? "Esperando datos..." : "Sin filas en esa ruta.", 12, UI.Dim));
+            return;
+        }
+        foreach (var _ in state.TableHeaders) _table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        _table.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
+        for (int c = 0; c < state.TableHeaders.Count; c++)
+        {
+            var h = UI.Label(state.TableHeaders[c], 11, UI.Accent, FontWeights.SemiBold);
+            h.Margin = new Thickness(8, 0, 6, 0);
+            h.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(h, c);
+            _table.Children.Add(h);
+        }
+        for (int r = 0; r < state.TableRows.Count; r++)
+        {
+            _table.RowDefinitions.Add(new RowDefinition { Height = new GridLength(24) });
+            if (r % 2 == 0)
             {
-                if (Math.Abs(change) < 0.005)
-                {
-                    _change.Text = "= 0 %";
-                    _change.Foreground = UI.Dim;
-                }
-                else
-                {
-                    _change.Text = (change > 0 ? "▲ " : "▼ ") + Math.Abs(change).ToString("0.00") + " %";
-                    _change.Foreground = change > 0 ? UI.Green : UI.Red;
-                }
+                var stripe = new Border { Background = UI.CardBg, CornerRadius = new CornerRadius(6) };
+                Grid.SetRow(stripe, r + 1);
+                Grid.SetColumnSpan(stripe, state.TableHeaders.Count);
+                _table.Children.Add(stripe);
+            }
+            var row = state.TableRows[r];
+            for (int c = 0; c < state.TableHeaders.Count && c < row.Count; c++)
+            {
+                var cell = UI.Label(row[c], 12, UI.White);
+                cell.Margin = new Thickness(8, 0, 6, 0);
+                cell.VerticalAlignment = VerticalAlignment.Center;
+                cell.ToolTip = row[c].Length > 24 ? row[c] : null;
+                Grid.SetRow(cell, r + 1);
+                Grid.SetColumn(cell, c);
+                _table.Children.Add(cell);
             }
         }
+    }
+
+    /// <summary>Una imagen grande o varias en mosaico. Clic = abrirla en el navegador.</summary>
+    void ShowImages(List<string> urls)
+    {
+        string key = string.Join("|", urls);
+        if (key == _imageKey && _images.Children.Count > 0) return;
+        _imageKey = key;
+        _images.Children.Clear();
+        _images.ColumnDefinitions.Clear();
+        if (urls.Count == 0)
+        {
+            _images.Children.Add(UI.Label("Esperando imagen...", 12, UI.Dim));
+            return;
+        }
+        int n = Math.Min(urls.Count, 4);
+        for (int i = 0; i < n; i++) _images.ColumnDefinitions.Add(new ColumnDefinition());
+        for (int i = 0; i < n; i++)
+        {
+            string url = urls[i];
+            var label = UI.CenterLabel("Cargando imagen...", 11, UI.Dim);
+            var box = new Border
+            {
+                CornerRadius = new CornerRadius(12),
+                Background = UI.CardBg,
+                Margin = new Thickness(i == 0 ? 0 : 4, 0, 0, 0),
+                Child = label,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                ToolTip = url,
+            };
+            box.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+            };
+            Grid.SetColumn(box, i);
+            _images.Children.Add(box);
+            _ = LoadInto(box, label, url, single: n == 1);
+        }
+    }
+
+    async System.Threading.Tasks.Task LoadInto(Border box, TextBlock label, string url, bool single)
+    {
+        var img = await ApiImages.LoadAsync(url);
+        if (img == null) { label.Text = "No se pudo cargar la imagen"; return; }
+        box.Child = null;
+        box.Background = new ImageBrush(img)
+        {
+            Stretch = single ? Stretch.Uniform : Stretch.UniformToFill,
+            AlignmentX = AlignmentX.Center,
+            AlignmentY = AlignmentY.Center,
+        };
+    }
+}
+
+/// <summary>Descarga y guarda en memoria las imágenes de las APIs (las últimas 40).</summary>
+public static class ApiImages
+{
+    static readonly System.Net.Http.HttpClient Http = CreateClient();
+    static readonly Dictionary<string, System.Windows.Media.Imaging.BitmapSource?> Cache = new();
+    static readonly Queue<string> Order = new();
+
+    static System.Net.Http.HttpClient CreateClient()
+    {
+        var c = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        c.DefaultRequestHeaders.UserAgent.ParseAdd("DynamicIsland/0.9 (Windows; modo DEV)");
+        return c;
+    }
+
+    public static async System.Threading.Tasks.Task<System.Windows.Media.Imaging.BitmapSource?> LoadAsync(string url)
+    {
+        if (Cache.TryGetValue(url, out var cached)) return cached;
+        System.Windows.Media.Imaging.BitmapSource? result = null;
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync(url);
+            if (bytes.Length <= 15 * 1024 * 1024)
+            {
+                var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                bmp.BeginInit();
+                bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bmp.DecodePixelWidth = 640;
+                bmp.StreamSource = new System.IO.MemoryStream(bytes);
+                bmp.EndInit();
+                bmp.Freeze();
+                result = bmp;
+            }
+        }
+        catch { }
+        Cache[url] = result;
+        Order.Enqueue(url);
+        while (Order.Count > 40) Cache.Remove(Order.Dequeue());
+        return result;
     }
 }
 
@@ -149,12 +321,19 @@ public sealed class ApisPage
         var top = new Grid();
         top.ColumnDefinitions.Add(new ColumnDefinition());
         top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        top.Children.Add(new ScrollViewer
+        var chipsScroll = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Hidden,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = _chips,
-        });
+        };
+        // Con muchas APIs las fichas no caben: la rueda del mouse las desplaza de lado.
+        chipsScroll.PreviewMouseWheel += (_, e) =>
+        {
+            chipsScroll.ScrollToHorizontalOffset(chipsScroll.HorizontalOffset - e.Delta * 0.6);
+            e.Handled = true;
+        };
+        top.Children.Add(chipsScroll);
         _chips.Orientation = Orientation.Horizontal;
         var add = UI.IconTextButton(UI.GAdd, "API", () => ApiEditorWindow.Open(null), 70, 28, UI.AccentSoft, UI.Accent);
         add.ToolTip = "Agregar una API";
@@ -225,6 +404,7 @@ public sealed class ApisPage
             chip.MouseLeftButtonDown += (_, e) => e.Handled = true;
             chip.MouseLeftButtonUp += (_, e) => { e.Handled = true; Select(id); };
             _chips.Children.Add(chip);
+            if (on) chip.Loaded += (_, _) => chip.BringIntoView();
         }
 
         if (apis.Count == 0) { _body.Content = _empty; return; }

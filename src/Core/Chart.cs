@@ -26,6 +26,9 @@ public sealed class ChartView : FrameworkElement
     {
         _mini = mini;
         SnapsToDevicePixels = true;
+        // Solo mientras está en pantalla, para no retener gráficas viejas.
+        Loaded += (_, _) => { UI.AccentChanged -= InvalidateVisual; UI.AccentChanged += InvalidateVisual; };
+        Unloaded += (_, _) => UI.AccentChanged -= InvalidateVisual;
         if (!mini)
         {
             MouseMove += (_, e) => { _hover = e.GetPosition(this).X; InvalidateVisual(); };
@@ -129,11 +132,14 @@ public sealed class ChartView : FrameworkElement
                 Color.FromArgb(0, color.R, color.G, color.B), 90);
             gradient.Freeze();
             dc.DrawGeometry(gradient, null, area);
-            var pen = new Pen(_stroke, _mini ? 1.4 : 2) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            // Copia congelada: congelar el pincel compartido del acento impediría cambiarlo luego.
+            var strokeBrush = new SolidColorBrush(color);
+            strokeBrush.Freeze();
+            var pen = new Pen(strokeBrush, _mini ? 1.4 : 2) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
             pen.Freeze();
             dc.DrawGeometry(null, pen, line);
             var last = new Point(X(_values.Count - 1), Y(_values[^1]));
-            dc.DrawEllipse(_stroke, null, last, _mini ? 1.8 : 3, _mini ? 1.8 : 3);
+            dc.DrawEllipse(strokeBrush, null, last, _mini ? 1.8 : 3, _mini ? 1.8 : 3);
         }
 
         if (_mini) return;
