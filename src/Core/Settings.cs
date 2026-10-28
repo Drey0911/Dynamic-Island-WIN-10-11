@@ -23,6 +23,12 @@ public sealed class Settings
     public string AccentColor { get; set; } = DynamicIsland.Core.UI.DefaultAccent;
     public int HoverDelayMs { get; set; } = 120;
     public bool HotkeysEnabled { get; set; } = true;
+    public bool AlwaysHiddenUntilHover { get; set; }
+    public bool ShowDynamicActivities { get; set; } = true;
+    public bool ShowMediaActivity { get; set; } = true;
+    public bool ShowTimerActivities { get; set; } = true;
+    public bool ShowSystemActivities { get; set; } = true;
+    public bool ShowOtherActivities { get; set; } = true;
 
     // Pantalla completa / juegos
     public bool ShowInFullscreen { get; set; } = true;

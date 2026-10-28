@@ -73,7 +73,7 @@ public sealed class WaterLayer : Canvas
         ClipToBounds = true;
 
         Paint();
-        Loaded += (_, _) => { UI.AccentChanged -= Paint; UI.AccentChanged += Paint; };
+        Loaded += (_, _) => { Paint(); UI.AccentChanged -= Paint; UI.AccentChanged += Paint; };
         Unloaded += (_, _) => UI.AccentChanged -= Paint;
 
         Children.Add(_back);

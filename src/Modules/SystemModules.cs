@@ -81,6 +81,7 @@ public sealed class VolumeModule : TransientModule
 {
     public override string Name => "Volumen";
     public override int Priority => 110;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override Size CompactSize => _wide ? new Size(300, 32) : new Size(250, 32);
     public override FrameworkElement CompactView => _toast.Root;
 
@@ -162,6 +163,7 @@ public sealed class MicrophoneModule : TransientModule
 {
     public override string Name => "Micrófono";
     public override int Priority => 108;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override Size CompactSize => new(280, 32);
     public override FrameworkElement CompactView => _toast.Root;
 
@@ -237,6 +239,7 @@ public sealed class BrightnessModule : TransientModule
 {
     public override string Name => "Brillo";
     public override int Priority => 106;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override Size CompactSize => new(250, 32);
     public override FrameworkElement CompactView => _toast.Root;
 
@@ -286,6 +289,7 @@ public sealed class CapsLockModule : TransientModule
 {
     public override string Name => "Bloq Mayús";
     public override int Priority => 100;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override Size CompactSize => new(220, 32);
     public override FrameworkElement CompactView => _toast.Root;
 
@@ -321,6 +325,7 @@ public sealed class PowerModule : TransientModule
 {
     public override string Name => "Energía";
     public override int Priority => 90;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override Size CompactSize => new(240, 32);
     public override FrameworkElement CompactView => _toast.Root;
 
@@ -360,6 +365,7 @@ public sealed class NetworkModule : TransientModule
 {
     public override string Name => "Red";
     public override int Priority => 88;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override Size CompactSize => new(240, 32);
     public override FrameworkElement CompactView => _toast.Root;
 

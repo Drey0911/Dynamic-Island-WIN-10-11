@@ -20,6 +20,7 @@ public sealed class FocusModule : IslandModule
     public override string Name => "Concentración";
     public override string Glyph => UI.GTimer;
     public override int Priority => 52;
+    public override IslandModuleCategory Category => IslandModuleCategory.Timers;
     public override Size CompactSize => new(180, 28);
 
     enum Phase { Focus, Break }

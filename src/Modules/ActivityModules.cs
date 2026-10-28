@@ -22,6 +22,7 @@ public sealed class PrivacyModule : IslandModule
     public override string Name => "Privacidad";
     public override string Glyph => UI.GMic;
     public override int Priority => 35;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override Size CompactSize => new(170, 28);
 
     readonly DispatcherTimer _poll = new() { Interval = TimeSpan.FromSeconds(2) };
@@ -121,6 +122,7 @@ public sealed class DownloadsModule : IslandModule
     public override string Name => "Descargas";
     public override string Glyph => UI.GDownload;
     public override int Priority => _done ? 92 : 40;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override bool IsTransient => _done;
     public override Size CompactSize => _done ? new Size(270, 32) : new Size(170, 28);
 

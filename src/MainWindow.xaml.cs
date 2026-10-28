@@ -31,7 +31,7 @@ public partial class MainWindow : Window
     const double FloatGap = 8;
     const double HotZoneWidth = 280, HotZoneHeight = 6;
 
-    enum Hotkey { Panel = 1, Translate, Mic, Previous, PlayPause, Next }
+    enum Hotkey { ToggleHiddenMode = 1, Translate, Mic, Previous, PlayPause, Next }
 
     readonly Spring _w = new(IdleWidth), _h = new(IdleHeight), _r = new(IdleHeight / 2);
     readonly Spring _offsetX = new(0, 200, 0.8);
@@ -225,13 +225,14 @@ public partial class MainWindow : Window
         if (_hwnd != IntPtr.Zero) RegisterHotkeys(s.HotkeysEnabled);
         UI.ApplyAccent(s.AccentColor);
         ApplyBackground();
+        if (s.AlwaysHiddenUntilHover && _expanded) SetExpanded(false);
         Evaluate();
     }
 
-    /// <summary>Fondo de la isla: negro translúcido (deja ver un poco lo de atrás, solo dentro de la isla) o negro sólido.</summary>
+    /// <summary>Fondo negro translúcido recortado al contorno de la isla, o negro sólido.</summary>
     void ApplyBackground()
     {
-        byte alpha = Settings.Current.IslandBackground == "solid" ? (byte)0xFF : (byte)0xD0;
+        byte alpha = Settings.Current.IslandBackground == "solid" ? (byte)0xFF : (byte)0xE8;
         var fill = new SolidColorBrush(Color.FromArgb(alpha, 0, 0, 0));
         fill.Freeze();
         Blob.Fill = fill;
@@ -245,7 +246,7 @@ public partial class MainWindow : Window
         if (!on) return;
 
         const uint mods = Native.MOD_CONTROL | Native.MOD_SHIFT | Native.MOD_NOREPEAT;
-        Register(Hotkey.Panel, mods, 0x20);     // Espacio
+        Register(Hotkey.ToggleHiddenMode, mods, 0x20); // Espacio
         Register(Hotkey.Translate, mods, 0x59); // Y
         Register(Hotkey.Mic, mods, 0x78);       // F9
         Register(Hotkey.Previous, mods, 0x79);  // F10
@@ -263,9 +264,9 @@ public partial class MainWindow : Window
     {
         switch (key)
         {
-            case Hotkey.Panel:
-                if (_expanded && _pinned) { _pinned = false; SetExpanded(false); }
-                else { _pinned = true; _focus = _primary; SetExpanded(true, DashTab.Now); }
+            case Hotkey.ToggleHiddenMode:
+                Settings.Current.AlwaysHiddenUntilHover = !Settings.Current.AlwaysHiddenUntilHover;
+                Settings.Current.Save();
                 break;
             case Hotkey.Translate:
                 _pinned = true;
@@ -480,6 +481,7 @@ public partial class MainWindow : Window
     void Evaluate()
     {
         var active = _modules.Where(m => m.IsActive).OrderByDescending(m => m.Priority).ToList();
+        var visible = active.Where(IsDynamicActivityVisible).ToList();
         FrameworkElement? view;
         Size size;
         IslandModule? secondary = null;
@@ -501,15 +503,15 @@ public partial class MainWindow : Window
         }
         else
         {
-            _primary = active.FirstOrDefault();
+            _primary = visible.FirstOrDefault();
             if (_primary != null) { view = _primary.CompactView; size = _primary.CompactSize; }
             else { view = null; size = Floating ? new Size(96, 26) : new Size(IdleWidth, IdleHeight); }
 
             if (_primary != null && !_primary.IsTransient)
-                secondary = active.FirstOrDefault(m => m != _primary && !m.IsTransient && m.BubbleView != null);
+                secondary = visible.FirstOrDefault(m => m != _primary && !m.IsTransient && m.BubbleView != null);
         }
 
-        _idleHidden = Discrete && !_expanded && _primary == null;
+        _idleHidden = !_expanded && (Settings.Current.AlwaysHiddenUntilHover || (Discrete && _primary == null));
         if (_idleHidden && !Hidden) _hotZone.Start();
         _visible.Target = Hidden || _idleHidden ? 0 : 1;
         _w.Target = size.Width;
@@ -539,6 +541,20 @@ public partial class MainWindow : Window
 
         SetContent(view, size);
         StartAnimating();
+    }
+
+    static bool IsDynamicActivityVisible(IslandModule module)
+    {
+        var settings = Settings.Current;
+        if (!settings.ShowDynamicActivities) return false;
+        return module.Category switch
+        {
+            IslandModuleCategory.Media => settings.ShowMediaActivity,
+            IslandModuleCategory.Calls => settings.ShowCalls,
+            IslandModuleCategory.Timers => settings.ShowTimerActivities,
+            IslandModuleCategory.System => settings.ShowSystemActivities,
+            _ => settings.ShowOtherActivities,
+        };
     }
 
     void SetContent(FrameworkElement? view, Size size)

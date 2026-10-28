@@ -27,13 +27,16 @@ public sealed class MediaModule : IslandModule
     public override string Name => "Música";
     public override string Glyph => UI.GMusic;
     public override int Priority => 60;
+    public override IslandModuleCategory Category => IslandModuleCategory.Media;
     public override Size CompactSize => ShowLyricInIsland ? new(330, 28) : new(150, 28);
 
     /// <summary>La isla cerrada se ensancha para mostrar la línea actual de la letra.</summary>
-    bool ShowLyricInIsland => Settings.Current.LyricsEnabled && Settings.Current.LyricsInIsland && _lyrics != null && _playing;
+    bool ShowLyricInIsland => Settings.Current.ShowMediaActivity && Settings.Current.LyricsEnabled &&
+                              Settings.Current.LyricsInIsland && _lyrics != null && _playing;
 
     public bool IsPlaying => _playing;
-    public override bool WantsFrames => _playing && Settings.Current.MusicVisualizer;
+    public override bool WantsFrames => _playing && Settings.Current.MusicVisualizer &&
+                                        Settings.Current.ShowMediaActivity && Settings.Current.ShowDynamicActivities;
 
     GlobalSystemMediaTransportControlsSessionManager? _manager;
     GlobalSystemMediaTransportControlsSession? _session;
@@ -175,7 +178,11 @@ public sealed class MediaModule : IslandModule
         Settings.Changed += () => Ui(() =>
         {
             UpdateVisualizerState();
-            if (Settings.Current.LyricsEnabled && _lyrics == null) { _lyricKey = ""; _ = LoadLyricsAsync(_title.Text, _artist.Text, _album); }
+            if (Settings.Current.ShowMediaActivity && Settings.Current.LyricsEnabled && _lyrics == null)
+            {
+                _lyricKey = "";
+                _ = LoadLyricsAsync(_title.Text, _artist.Text, _album);
+            }
             UpdateLyricState();
         });
         Poll();
@@ -247,7 +254,8 @@ public sealed class MediaModule : IslandModule
 
     void UpdateVisualizerState()
     {
-        bool on = _playing && Settings.Current.MusicVisualizer;
+        bool on = _playing && Settings.Current.MusicVisualizer &&
+                  Settings.Current.ShowMediaActivity && Settings.Current.ShowDynamicActivities;
         if (on) AudioAnalyzer.Instance.Start();
         else
         {
@@ -296,6 +304,17 @@ public sealed class MediaModule : IslandModule
 
     void Poll()
     {
+        if (!Settings.Current.ShowMediaActivity)
+        {
+            _session = null;
+            _boundId = null;
+            _playing = false;
+            _hasTitle = false;
+            _lastPlaying = DateTime.MinValue;
+            if (IsActive) SetActive(false);
+            return;
+        }
+
         var picked = PickSession();
         bool boundPlaying = false, dead = false, pickedPlaying = false;
         if (_session != null)
@@ -325,7 +344,7 @@ public sealed class MediaModule : IslandModule
         UpdateLyricState();
 
         // Visible 20 s después de pausar, como en iPhone.
-        bool active = _session != null && _hasTitle &&
+        bool active = Settings.Current.ShowMediaActivity && _session != null && _hasTitle &&
                       (_playing || (DateTime.Now - _lastPlaying).TotalSeconds < 20);
         if (active != IsActive) SetActive(active);
         else if (wasPlaying != _playing) Raise();
@@ -419,7 +438,7 @@ public sealed class MediaModule : IslandModule
     /// <summary>Activa el temporizador de letras y ensancha o encoge la isla si hace falta.</summary>
     void UpdateLyricState()
     {
-        if (_lyrics != null && _playing && Settings.Current.LyricsEnabled) _lyricTimer.Start();
+        if (_lyrics != null && _playing && Settings.Current.ShowMediaActivity && Settings.Current.LyricsEnabled) _lyricTimer.Start();
         else _lyricTimer.Stop();
         bool wide = ShowLyricInIsland;
         _lyricCompact.Visibility = wide ? Visibility.Visible : Visibility.Collapsed;

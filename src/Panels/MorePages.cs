@@ -458,6 +458,8 @@ public sealed class SettingsPage
                 () => null, "Reiniciar", App.RestartElevated);
         Choice("Forma de la isla", new[] { ("attached", "Pegada al borde"), ("floating", "Flotante"), ("discrete", "Discreta") },
             S.IslandStyle, v => S.IslandStyle = v);
+        Toggle("Ocultar hasta pasar el cursor", "Mantiene la isla oculta; al pasar el cursor por el centro del borde superior abre el contenido normal y se cierra al salir.",
+            () => S.AlwaysHiddenUntilHover, v => S.AlwaysHiddenUntilHover = v);
         var styleHint = UI.Label("Flotante: separada del borde, como en el iPhone. Discreta: no se ve hasta que hay música, una llamada u otra actividad; para abrirla lleva el cursor al centro del borde superior de la pantalla.", 11, UI.Dim);
         styleHint.TextWrapping = TextWrapping.Wrap;
         styleHint.TextTrimming = TextTrimming.None;
@@ -468,8 +470,22 @@ public sealed class SettingsPage
             S.IslandBackground, v => S.IslandBackground = v);
         AccentPicker();
         Choice("Abrir al pasar el mouse", new[] { (60, "Rápido"), (120, "Normal"), (350, "Lento") }, S.HoverDelayMs, v => S.HoverDelayMs = v);
-        Toggle("Atajos de teclado", "Ctrl+Shift+Espacio panel · Ctrl+Shift+Y traducir · Ctrl+Shift+F9 micrófono · Ctrl+Shift+F10/F11/F12 anterior, pausa, siguiente",
+        Toggle("Atajos de teclado", "Ctrl+Shift+Espacio ocultar/mostrar hasta pasar el cursor · Ctrl+Shift+Y traducir · Ctrl+Shift+F9 micrófono · Ctrl+Shift+F10/F11/F12 anterior, pausa, siguiente",
             () => S.HotkeysEnabled, v => S.HotkeysEnabled = v);
+
+        Section("Contenido dinámico minimizado");
+        Toggle("Mostrar actividades dinámicas", "Control general: desactívalo para que ninguna actividad cambie la isla minimizada. El panel sigue disponible al pasar el cursor.",
+            () => S.ShowDynamicActivities, v => S.ShowDynamicActivities = v);
+        Toggle("Música y videos", "Desactivado: no detecta la reproducción, no muestra el módulo ni analiza el audio.",
+            () => S.ShowMediaActivity, v => S.ShowMediaActivity = v);
+        Toggle("Llamadas", "Detecta llamadas y chats de voz para mostrarlos en la isla.",
+            () => S.ShowCalls, v => S.ShowCalls = v);
+        Toggle("Temporizadores, alarma y concentración", "Controla qué actividades de tiempo aparecen en la isla minimizada.",
+            () => S.ShowTimerActivities, v => S.ShowTimerActivities = v);
+        Toggle("Avisos y estado del sistema", "Volumen, micrófono, energía, red, privacidad, descargas y dispositivos Bluetooth.",
+            () => S.ShowSystemActivities, v => S.ShowSystemActivities = v);
+        Toggle("Juegos, portapapeles y APIs", "Controla las demás actividades dinámicas.",
+            () => S.ShowOtherActivities, v => S.ShowOtherActivities = v);
 
         Section("Rendimiento y FPS");
         ActionCard(UI.GGame, "Medidor de FPS",
@@ -511,8 +527,6 @@ public sealed class SettingsPage
         Toggle("Activar No molestar al concentrarte", "Silencia las notificaciones de Windows durante el enfoque", () => S.FocusDoNotDisturb, v => S.FocusDoNotDisturb = v);
 
         Section("Llamadas");
-        Toggle("Mostrar llamadas en la isla", "Discord (chats de voz), Teams, Zoom, WhatsApp, Telegram y cualquier app en llamada, con silenciar, ensordecer e ir a la app",
-            () => S.ShowCalls, v => S.ShowCalls = v);
         Toggle("Llamadas en el navegador", "Google Meet, Teams o Discord web y otras páginas que usen el micrófono",
             () => S.CallsInBrowser, v => S.CallsInBrowser = v);
 

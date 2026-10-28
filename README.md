@@ -47,16 +47,20 @@ por el momento se encuentra en BETA la funcion de *modo DEV* para llamado *GET d
 
 | Atajo | Acción |
 |---|---|
-| Ctrl + Shift + Espacio | Abrir o cerrar el panel |
+| Ctrl + Shift + Espacio | Activar o desactivar "Ocultar hasta pasar el cursor" |
 | Ctrl + Shift + Y | Traducir el texto copiado |
 | Ctrl + Shift + F9 | Silenciar o activar el micrófono |
 | Ctrl + Shift + F10 / F11 / F12 | Anterior, reproducir o pausar, siguiente |
 
-Los atajos funcionan dentro de juegos, donde el mouse suele estar capturado.
+Los atajos funcionan dentro de juegos, donde el mouse suele estar capturado. Ctrl + Shift + Espacio alterna el modo oculto: la isla permanece invisible hasta que el cursor llega al centro del borde superior; al salir, se cierra. El panel se abre al pasar el cursor. Este atajo se puede desactivar en Ajustes > General > Atajos de teclado.
+
+En Ajustes > General puedes activar "Ocultar hasta pasar el cursor" y controlar qué actividades aparecen en la isla minimizada. "Mostrar actividades dinámicas" es el interruptor general; debajo puedes elegir música y videos, llamadas, temporizadores/alarma/concentración, avisos del sistema y otras actividades. Desactivar "Música y videos" detiene el monitoreo de reproducción, el análisis de audio y la aparición del módulo. La isla sigue ejecutándose en segundo plano.
+
+El menú del icono de la bandeja también permite ocultar completamente la isla y volver a mostrarla con "Mostrar isla".
 
 ## Ajustes
 
-Se guardan en `%LOCALAPPDATA%\DynamicIsland\settings.json` y se conservan al apagar o reiniciar el PC. En la misma carpeta queda `log.txt` con los errores, útil para reportar problemas.
+Se guardan en `%LOCALAPPDATA%\DynamicIsland\settings.json` y se conservan al apagar o reiniciar el PC, incluido el modo oculto y las preferencias de actividades dinámicas. En la misma carpeta queda `log.txt` con los errores, útil para reportar problemas.
 
 ## Rendimiento y FPS
 

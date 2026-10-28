@@ -7,6 +7,15 @@ using System.Windows.Threading;
 
 namespace DynamicIsland.Core;
 
+public enum IslandModuleCategory
+{
+    Media,
+    Calls,
+    Timers,
+    System,
+    Other,
+}
+
 /// <summary>
 /// Actividad de la isla. Se muestra la activa de mayor prioridad; la siguiente
 /// no transitoria aparece como una gota separada.
@@ -19,6 +28,7 @@ public abstract class IslandModule
     public abstract string Name { get; }
     public virtual string Glyph => UI.GHome;
     public abstract int Priority { get; }
+    public virtual IslandModuleCategory Category => IslandModuleCategory.Other;
 
     /// <summary>Avisos cortos que se ocultan solos.</summary>
     public virtual bool IsTransient => false;

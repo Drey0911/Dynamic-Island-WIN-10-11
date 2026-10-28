@@ -20,6 +20,7 @@ public sealed class TimerModule : IslandModule
     public override string Name => "Temporizador";
     public override string Glyph => UI.GTimer;
     public override int Priority => _finished ? 95 : 50;
+    public override IslandModuleCategory Category => IslandModuleCategory.Timers;
     public override bool IsTransient => _finished;
     public override Size CompactSize => _finished ? new Size(230, 32) : new Size(150, 28);
 
@@ -199,6 +200,7 @@ public sealed class StopwatchModule : IslandModule
     public override string Name => "Cronómetro";
     public override string Glyph => UI.GClock;
     public override int Priority => 45;
+    public override IslandModuleCategory Category => IslandModuleCategory.Timers;
     public override Size CompactSize => new(150, 28);
 
     readonly System.Diagnostics.Stopwatch _sw = new();
@@ -285,6 +287,7 @@ public sealed class AlarmModule : IslandModule
     public override string Name => "Alarma";
     public override string Glyph => UI.GAlarm;
     public override int Priority => 130; // lo más importante cuando suena
+    public override IslandModuleCategory Category => IslandModuleCategory.Timers;
     public override Size CompactSize => new(220, 32);
 
     readonly Settings _settings = Settings.Current;

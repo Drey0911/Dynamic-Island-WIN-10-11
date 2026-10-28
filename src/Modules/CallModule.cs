@@ -22,6 +22,7 @@ public sealed class CallModule : IslandModule
     public override string Name => "Llamada";
     public override string Glyph => UI.GPhone;
     public override int Priority => 75;
+    public override IslandModuleCategory Category => IslandModuleCategory.Calls;
     public override Size CompactSize => new(200, 28);
     public override bool WantsFrames => IsActive;
 
@@ -69,7 +70,7 @@ public sealed class CallModule : IslandModule
         _cMic.Visibility = Visibility.Collapsed;
         Grid.SetColumn(_cMic, 2);
         _compact.Children.Add(_cMic);
-        Paint(_cDots, UI.Green);
+        Paint(_cDots, UI.Accent);
         Grid.SetColumn(_cDots, 3);
         _compact.Children.Add(_cDots);
 
@@ -96,7 +97,7 @@ public sealed class CallModule : IslandModule
         titles.Children.Add(_eSub);
         Grid.SetColumn(titles, 1);
         head.Children.Add(titles);
-        Paint(_eDots, UI.Green);
+        Paint(_eDots, UI.Accent);
         Grid.SetColumn(_eDots, 2);
         head.Children.Add(_eDots);
         _expanded.Children.Add(head);

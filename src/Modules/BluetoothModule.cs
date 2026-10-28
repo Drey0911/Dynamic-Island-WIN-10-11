@@ -72,6 +72,7 @@ public sealed class BluetoothModule : TransientModule
 {
     public override string Name => "Bluetooth";
     public override int Priority => 89;
+    public override IslandModuleCategory Category => IslandModuleCategory.System;
     public override Size CompactSize => new(270, 32);
     public override FrameworkElement CompactView => _toast.Root;
 
