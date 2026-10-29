@@ -33,7 +33,7 @@ por el momento se encuentra en BETA la funcion de *modo DEV* para llamado *GET d
 | Sistema | Rendimiento (modelo de CPU y GPU, uso con los contadores del Administrador de tareas, temperaturas, FPS y 1% low), almacenamiento de cada unidad como en el Explorador y dispositivos inalámbricos con su batería. |
 | Dispositivos | Audífonos, mouse, teclados y controles conectados por Bluetooth o por receptor USB, con la batería que informa cada dispositivo. Ver la sección Batería de dispositivos. |
 | Tiempo | Temporizador, cronómetro, alarma y modo concentración (Pomodoro que activa No molestar). |
-| Traductor | Traducción rápida con lectura en voz alta (voces de Windows). MyMemory gratis o DeepL con clave propia. |
+| Traductor | Traducción en vivo mientras se escribe, con lectura en voz alta (voces de Windows). Google Translate gratis (MyMemory de respaldo) o DeepL con clave propia. Ver [Traductor](#traductor). |
 | Llamadas | Detecta cuándo estás en una llamada o chat de voz: Discord, Teams, Zoom, WhatsApp, Telegram, Slack, Signal, TeamSpeak, Steam, Meet en el navegador y cualquier otra app que use el micrófono mientras reproduce audio. Al abrir la isla: silenciar el micrófono, ensordecer (silencia el audio de la llamada) e ir a la app. Se activa o desactiva en Ajustes > Llamadas. |
 | Controles | Sonido (salida, micrófono y volumen por aplicación), pantalla (brillo en portátiles) y Bluetooth. Avisos al cambiar de dispositivo o silenciar el micrófono. |
 | Archivos | Suelta uno o varios archivos en la isla. Se guardan con su nombre e icono (también al reiniciar), se arrastran o copian a otra app y se envían al celular con un código QR por la red Wi-Fi local. |
@@ -103,6 +103,11 @@ El clima se toma de Open-Meteo con esta prioridad:
 2. La ubicación de Windows, si está permitida. Se configura en *Configuración > Privacidad y seguridad > Ubicación*; ahí mismo, en *Ubicación predeterminada*, se puede fijar la ubicación del PC cuando no tiene GPS ni Wi-Fi para calcularla.
 3. Una ubicación aproximada según la conexión a internet (puede marcar otra ciudad si el proveedor de internet está en otra parte).
 
+## Traductor
+
+- **Traducción en vivo:** traduce mientras escribes, como el traductor web. Consulta tras una pausa de 0,25 s y, si escribes sin parar, actualiza el resultado cada 0,7 s aprox. Si hay una consulta en camino (red lenta) se deja terminar en lugar de cancelarla en cada tecla. Enter, *Traducir*, *Pegar* y el cambio de idioma traducen al instante.
+- **Motor gratis:** *Ajustes > Traductor > Google (gratis)* usa el endpoint público de Google Translate (sin clave). Si Google no responde, la isla usa MyMemory automáticamente. Con una clave de DeepL se usa DeepL.
+
 ## Modo administrador (recomendado)
 
 Viene activado por defecto porque habilita la temperatura del CPU, los FPS de cualquier juego y el arrastre de archivos desde apps de administrador. Windows pide confirmación al abrir la isla; si se activa "Iniciar con Windows" en este modo, se crea una tarea programada para que no vuelva a preguntar. Se puede cambiar en Ajustes o desde el icono de la bandeja. En este modo los archivos se pueden seguir soltando en la isla desde el Explorador, pero Windows no permite arrastrarlos desde la isla hacia apps sin permisos: usa el botón Copiar y pega con Ctrl+V. Para FPS sin estas limitaciones, usa "Permitir FPS sin administrador".
@@ -115,7 +120,7 @@ Viene activado por defecto porque habilita la temperatura del CPU, los FPS de cu
 | Ubicación sin permiso de Windows | ipapi.co / ipwho.is | La IP pública (lo hace cualquier sitio web) |
 | Nombre de la ciudad | BigDataCloud | Coordenadas |
 | Letras | LRCLIB | Título y artista de la canción |
-| Traductor | MyMemory o DeepL | El texto a traducir |
+| Traductor | Google Translate (MyMemory de respaldo) o DeepL | El texto a traducir |
 | Ciudad del clima elegida a mano | Open-Meteo Geocoding | El nombre de la ciudad |
 
 El OCR de capturas, el portapapeles inteligente y la detección de idioma funcionan sin internet. "Enviar al celular" solo funciona dentro de la red local y el enlace caduca a los 15 minutos.
@@ -176,7 +181,7 @@ Servicios en línea:
 |---|---|
 | [Open-Meteo](https://open-meteo.com/) | Clima y búsqueda de ciudades. Datos bajo licencia CC BY 4.0 |
 | [LRCLIB](https://lrclib.net/) | Letras sincronizadas |
-| [MyMemory](https://mymemory.translated.net/) y [DeepL](https://www.deepl.com/) | Traducción |
+| [Google Translate](https://translate.google.com/), [MyMemory](https://mymemory.translated.net/) y [DeepL](https://www.deepl.com/) | Traducción |
 | [BigDataCloud](https://www.bigdatacloud.com/) | Nombre de la ciudad a partir de coordenadas |
 | [ipapi.co](https://ipapi.co/) y [ipwho.is](https://ipwho.is/) | Ubicación aproximada cuando Windows no la da |
 

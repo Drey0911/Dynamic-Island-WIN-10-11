@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -29,6 +31,14 @@ public sealed class TranslatePage
     readonly WrapPanel _pickerList = new();
     bool _pickingFrom;
     int _request;
+    // Traducción en vivo mientras se escribe (como el traductor web): consulta tras una pausa muy corta
+    // y, si se sigue escribiendo sin parar, traduce igual cada cierto tiempo para que el resultado no se quede atrás.
+    readonly DispatcherTimer _typingDelay = new() { Interval = TimeSpan.FromMilliseconds(250) };
+    static readonly TimeSpan MaxTypingWait = TimeSpan.FromMilliseconds(700);
+    DateTime _typingSince = DateTime.MinValue;
+    string _lastTranslated = "";
+    CancellationTokenSource? _cts;
+    bool _settingInput;
 
     static Settings S => Settings.Current;
 
@@ -72,6 +82,8 @@ public sealed class TranslatePage
                 _ = TranslateAsync();
             }
         };
+        _input.TextChanged += (_, _) => OnInputChanged();
+        _typingDelay.Tick += (_, _) => { _typingDelay.Stop(); _ = TranslateAsync(live: true); };
         boxes.Children.Add(_input);
 
         _output = new TextBlock
@@ -174,7 +186,7 @@ public sealed class TranslatePage
         (S.TranslateFrom, S.TranslateTo) = (S.TranslateTo, S.TranslateFrom);
         S.Save();
         UpdateLabels();
-        if (_output.Text.Length > 0) _input.Text = _output.Text;
+        if (_output.Text.Length > 0) SetInput(_output.Text);
         if (_input.Text.Trim().Length > 0) _ = TranslateAsync();
     }
 
@@ -182,7 +194,7 @@ public sealed class TranslatePage
     {
         var text = ClipboardHistory.CurrentText();
         if (string.IsNullOrWhiteSpace(text)) { Status("El portapapeles no tiene texto"); return; }
-        _input.Text = text;
+        SetInput(text);
         _ = TranslateAsync();
     }
 
@@ -190,7 +202,7 @@ public sealed class TranslatePage
     public void TranslateText(string text)
     {
         _picker.Visibility = Visibility.Collapsed;
-        _input.Text = text;
+        SetInput(text);
         _ = TranslateAsync();
     }
 
@@ -201,24 +213,83 @@ public sealed class TranslatePage
         PasteAndTranslate();
     }
 
-    async Task TranslateAsync()
+    /// <summary>Cambia el texto de entrada desde código sin disparar la espera de escritura (se traduce enseguida).</summary>
+    void SetInput(string text)
     {
+        _settingInput = true;
+        try { _input.Text = text; }
+        finally { _settingInput = false; }
+        _input.CaretIndex = _input.Text.Length;
+    }
+
+    void OnInputChanged()
+    {
+        if (_settingInput) return;
+        _typingDelay.Stop();
+        if (string.IsNullOrWhiteSpace(_input.Text))
+        {
+            // Texto borrado: se descarta cualquier traducción en curso y se limpia el resultado.
+            _request++;
+            _cts?.Cancel();
+            _output.Text = "";
+            _lastTranslated = "";
+            _typingSince = DateTime.MinValue;
+            Status("");
+            return;
+        }
+        var now = DateTime.UtcNow;
+        if (_typingSince == DateTime.MinValue) _typingSince = now;
+        // Si ya hay una consulta en camino, se deja terminar (si no, con red lenta nunca llegaría un resultado).
+        if (now - _typingSince >= MaxTypingWait && _cts == null)
+        {
+            // Escritura continua: se traduce ya lo que va escrito sin esperar a que se detenga.
+            _ = TranslateAsync(live: true);
+            return;
+        }
+        _typingDelay.Start();
+    }
+
+    async Task TranslateAsync(bool live = false)
+    {
+        _typingDelay.Stop();
+        _typingSince = DateTime.MinValue;
         string text = _input.Text;
         if (string.IsNullOrWhiteSpace(text)) return;
+        // En vivo no se repite la consulta si el texto no cambió (por ejemplo, solo se añadió un espacio).
+        string signature = $"{S.TranslateFrom}|{S.TranslateTo}|{S.TranslatorService}|{text.Trim()}";
+        if (live && signature == _lastTranslated && _output.Text.Length > 0) return;
         int id = ++_request;
+        // La consulta anterior ya no sirve: se cancela para no esperar ni gastar cuota.
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
         Status("Traduciendo...");
         try
         {
-            string result = await Translator.TranslateAsync(text, S.TranslateFrom, S.TranslateTo);
+            string result = await Translator.TranslateAsync(text, S.TranslateFrom, S.TranslateTo, cts.Token);
             if (id != _request) return;
             _output.Text = result;
-            Status(S.TranslatorService == "DeepL" && S.DeepLKey.Length > 0 ? "DeepL" : "MyMemory");
+            _lastTranslated = signature;
+            Status(Translator.LastEngine);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            // Se siguió escribiendo: la nueva consulta se encarga.
         }
         catch (Exception ex)
         {
             if (id != _request) return;
-            Status("No se pudo traducir");
+            Status(ex switch
+            {
+                InvalidOperationException when ex.Message.Length is > 0 and <= 60 => ex.Message,
+                HttpRequestException or TaskCanceledException => "Sin conexión con el traductor",
+                _ => "No se pudo traducir",
+            });
             Log.Error("Translate", ex);
+        }
+        finally
+        {
+            if (ReferenceEquals(_cts, cts)) _cts = null;
+            cts.Dispose();
         }
     }
 
@@ -547,7 +618,7 @@ public sealed class SettingsPage
         Toggle("Historial del portapapeles", "Solo en memoria, nunca se guarda en disco", () => S.ClipboardHistory, v => S.ClipboardHistory = v);
 
         Section("Traductor");
-        Choice("Servicio", new[] { ("MyMemory", "MyMemory (gratis)"), ("DeepL", "DeepL") }, S.TranslatorService, v => S.TranslatorService = v);
+        Choice("Servicio", new[] { ("MyMemory", "Google (gratis)"), ("DeepL", "DeepL") }, S.TranslatorService, v => S.TranslatorService = v);
         var keyRow = new Grid { Margin = new Thickness(0, 2, 0, 10) };
         var key = UI.Input(32);
         key.Text = S.DeepLKey;
